@@ -51,6 +51,8 @@ reset_level={
 2d_physics/layer_1="遮光物（墙体/门板）"
 2d_physics/layer_2="镜面"
 2d_physics/layer_3="机关接收区"
+2d_physics/layer_4="折射面（偏转/分光/变色）"
+2d_physics/layer_5="传送门"
 
 [rendering]
 

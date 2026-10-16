@@ -16,7 +16,12 @@ signal lit_changed(is_lit: bool)
 const RECEIVER_GROUP := "light_receivers"
 const RESETTABLE_GROUP := "resettables"
 
+## 颜色感应：match_color 为 true 时，只有颜色等于 color_filter 的光才触发本机关
+@export var color_filter: Color = Color.WHITE
+@export var match_color: bool = false
+
 var _is_lit: bool = false
+var _light_color: Color = Color.WHITE
 
 
 func _enter_tree() -> void:
@@ -31,8 +36,22 @@ func is_lit() -> bool:
 	return _is_lit
 
 
-## 由光线系统调用（组员不要手动调用）：设置光照状态
-func apply_lit(value: bool) -> void:
+## 当前照在机关上的光线颜色（可在 on_lit() / on_light_frame() 里读取）
+func get_light_color() -> Color:
+	return _light_color
+
+
+## 光线系统用这个判断某条光是否对本机关有效（颜色感应机关靠它过滤）
+func accepts(color: Color) -> bool:
+	if not match_color:
+		return true
+	return color.is_equal_approx(color_filter)
+
+
+## 由光线系统调用（组员不要手动调用）：设置光照状态与命中颜色
+func apply_lit(value: bool, color: Color = Color.WHITE) -> void:
+	if value:
+		_light_color = color
 	if value == _is_lit:
 		return
 	_is_lit = value
