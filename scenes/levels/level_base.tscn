@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://dkfv5qyidjkyv"]
+
+[ext_resource type="Script" uid="uid://kp5cwyiuspgi" path="res://core/light_system.gd" id="1_system"]
+[ext_resource type="Script" uid="uid://d0ts3adkqxgb1" path="res://core/level_manager.gd" id="2_manager"]
+
+[node name="Level" type="Node2D"]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(576, 324)
+
+[node name="Blocks" type="Node2D" parent="."]
+
+[node name="LightSystem" type="Node" parent="."]
+script = ExtResource("1_system")
+
+[node name="LevelManager" type="Node" parent="."]
+script = ExtResource("2_manager")

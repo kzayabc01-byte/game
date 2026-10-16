@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://bodh855d3ngah"]
+
+[ext_resource type="Script" uid="uid://c3lekk8p1kmsu" path="res://blocks/cocoon/cocoon.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_cocoon"]
+resource_local_to_scene = true
+radius = 22.0
+
+[node name="Cocoon" type="Area2D"]
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_cocoon")

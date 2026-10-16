@@ -1,0 +1,27 @@
+[gd_scene load_steps=4 format=3 uid="uid://besbvqa4lgcp5"]
+
+[ext_resource type="Script" uid="uid://dwwo6a1yiu8fd" path="res://blocks/light_door/light_door.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_sensor"]
+resource_local_to_scene = true
+radius = 20.0
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_plate"]
+resource_local_to_scene = true
+size = Vector2(64, 8)
+
+[node name="LightDoor" type="Area2D"]
+collision_layer = 4
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="SensorShape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_sensor")
+
+[node name="DoorPlate" type="AnimatableBody2D" parent="."]
+position = Vector2(170, -37)
+collision_layer = 1
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DoorPlate"]
+shape = SubResource("RectangleShape2D_plate")

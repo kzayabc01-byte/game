@@ -1,0 +1,6 @@
+# Godot 4 缓存/导入目录（不要提交）
+.godot/
+
+# 系统文件
+.DS_Store
+Thumbs.db

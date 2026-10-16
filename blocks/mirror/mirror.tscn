@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3 uid="uid://dvpqvneon1uhf"]
+
+[ext_resource type="Script" uid="uid://c1a0og3n3m5ed" path="res://blocks/mirror/mirror.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_mirror"]
+resource_local_to_scene = true
+size = Vector2(64, 8)
+
+[node name="Mirror" type="StaticBody2D"]
+collision_layer = 2
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_mirror")

@@ -1,0 +1,38 @@
+[gd_scene load_steps=7 format=3 uid="uid://dubyhee0dah46"]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" uid="uid://cb3i4tjcexqy1" path="res://blocks/light_source/light_source.tscn" id="2_source"]
+[ext_resource type="PackedScene" uid="uid://c4pny7yo7qwmq" path="res://blocks/wall/wall.tscn" id="3_wall"]
+[ext_resource type="PackedScene" uid="uid://dvpqvneon1uhf" path="res://blocks/mirror/mirror.tscn" id="4_mirror"]
+[ext_resource type="PackedScene" uid="uid://bodh855d3ngah" path="res://blocks/cocoon/cocoon.tscn" id="5_cocoon"]
+[ext_resource type="PackedScene" uid="uid://besbvqa4lgcp5" path="res://blocks/light_door/light_door.tscn" id="6_door"]
+
+[node name="Level01" instance=ExtResource("1_base")]
+
+[node name="Source" parent="Blocks" instance=ExtResource("2_source")]
+position = Vector2(120, 400)
+
+[node name="MirrorA" parent="Blocks" instance=ExtResource("4_mirror")]
+position = Vector2(320, 200)
+
+[node name="LightDoor" parent="Blocks" instance=ExtResource("6_door")]
+position = Vector2(320, 400)
+
+[node name="BlockerWall" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(400, 400)
+scale = Vector2(1, 1.5)
+
+[node name="Cocoon" parent="Blocks" instance=ExtResource("5_cocoon")]
+position = Vector2(520, 400)
+
+[node name="WallTop" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(320, 60)
+scale = Vector2(6, 1)
+
+[node name="WallFloor" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(240, 470)
+scale = Vector2(6, 1)
+
+[node name="WallRight" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(620, 400)
+scale = Vector2(1, 1.5)
