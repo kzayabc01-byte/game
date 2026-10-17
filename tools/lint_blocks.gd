@@ -7,6 +7,8 @@ extends SceneTree
 const BLOCKS_DIR := "res://blocks"
 const LAYER_OPAQUE := 1
 const LAYER_MIRROR := 2
+const LAYER_OPTIC := 8    # 层 4：折射体 / 凹透镜 / 冰川
+const LAYER_PORTAL := 16  # 层 5：传送门
 
 var _errors: int = 0
 var _warnings: int = 0
@@ -84,6 +86,10 @@ func _check_block(folder: String, class_names: Dictionary) -> void:
 
 
 func _classify(folder: String, node: Node) -> void:
+	if node is OpticalSurface:
+		_classify_optical(folder, node)
+		return
+
 	if node is LightReceiver:
 		var shapes := _count_shapes(node)
 		if shapes == 0:
@@ -103,7 +109,7 @@ func _classify(folder: String, node: Node) -> void:
 		elif mirror:
 			_ok(folder, "镜面 · 层 2")
 		else:
-			_error(folder, "碰撞层 %d 不对：遮光物应放层 1，镜面应放层 2" % layer)
+			_error(folder, "碰撞层 %d 不对：遮光物应放层 1，镜面应放层 2，折射类应放层 4" % layer)
 		return
 
 	if node is LightSource:
@@ -117,6 +123,36 @@ func _classify(folder: String, node: Node) -> void:
 	if node is Node2D or node is Node:
 		_warn(folder, "未分类的积木（根节点 %s），确认它确实是关卡组件" % node.get_class())
 		return
+
+
+## 光路表面（OpticalSurface）：折射类放层 4，传送门放层 5
+func _classify_optical(folder: String, node: Node) -> void:
+	var layer: int = (node as CollisionObject2D).collision_layer
+	if _count_shapes(node) == 0:
+		_error(folder, "光路积木缺少 CollisionShape2D（光线打不到它）")
+		return
+
+	if node is Portal:
+		if (layer & LAYER_PORTAL) == 0:
+			_error(folder, "传送门应放层 5（当前碰撞层 %d）" % layer)
+		elif not (node as Portal).is_linked():
+			_warn(folder, "传送门没有预配 linked_portal（运行时会自动连最近的同类门）")
+		else:
+			_ok(folder, "传送门 · 层 5")
+		return
+
+	if (layer & LAYER_OPTIC) == 0:
+		_error(folder, "折射类应放层 4（当前碰撞层 %d）" % layer)
+		return
+
+	if node is Glacier:
+		_ok(folder, "冰川（折射 + 可融化） · 层 4")
+	elif node is ConcaveLens:
+		_ok(folder, "凹透镜（分 %d 束） · 层 4" % (node as ConcaveLens).split_count)
+	elif node is RefractSurface:
+		_ok(folder, "折射介质（偏折 %.0f°） · 层 4" % (node as RefractSurface).bend_degrees)
+	else:
+		_ok(folder, "光路表面 · 层 4")
 
 
 func _count_shapes(node: Node) -> int:

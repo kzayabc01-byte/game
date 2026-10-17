@@ -11,6 +11,9 @@ extends Node
 @export var ray_width: float = 3.0
 @export var glow_width: float = 12.0
 
+## 每个光源每帧最多计算多少段光路（分束会消耗预算，防性能爆炸）
+@export var max_segments_per_source: int = 24
+
 var _sources: Array[LightSource] = []
 var _receivers: Array[LightReceiver] = []
 var _lit_receivers: Dictionary = {}
@@ -47,17 +50,18 @@ func _physics_process(delta: float) -> void:
 	var hit_receivers: Array[LightReceiver] = []
 	var segment_sets: Array[PackedVector2Array] = []
 	for source in _sources:
-		var trace := RayCaster.trace(
+		var traces := RayCaster.trace_multi(
 			space,
 			source.global_position,
 			source.get_light_direction(),
-			source.max_bounces
+			max_segments_per_source
 		)
-		segment_sets.append(trace.segments)
-		for hit in trace.receiver_hits:
-			var receiver := hit.receiver as LightReceiver
-			if receiver != null and not hit_receivers.has(receiver):
-				hit_receivers.append(receiver)
+		for trace in traces:
+			segment_sets.append(trace.segments)
+			for hit in trace.receiver_hits:
+				var receiver := hit.receiver as LightReceiver
+				if receiver != null and not hit_receivers.has(receiver):
+					hit_receivers.append(receiver)
 	_renderer.set_segments(segment_sets)
 	_sync_receivers(hit_receivers, delta)
 

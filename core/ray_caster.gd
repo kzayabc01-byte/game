@@ -9,12 +9,17 @@ extends RefCounted
 const LAYER_OPAQUE := 1        # 碰撞层 1：遮光物（墙体 / 门板）
 const LAYER_MIRROR := 2        # 碰撞层 2：镜面
 const LAYER_RECEIVER := 4      # 碰撞层 3：机关接收区
+const LAYER_OPTIC := 8         # 碰撞层 4：折射体 / 凹透镜 / 冰川（OpticalSurface）
+const LAYER_PORTAL := 16       # 碰撞层 5：传送门（OpticalSurface）
 
-const MASK_BLOCKING := LAYER_OPAQUE | LAYER_MIRROR
+const MASK_BLOCKING := LAYER_OPAQUE | LAYER_MIRROR | LAYER_OPTIC | LAYER_PORTAL
 const MASK_RECEIVER := LAYER_RECEIVER
 
 const DEFAULT_MAX_BOUNCES := 12
 const DEFAULT_MAX_LENGTH := 3000.0
+const DEFAULT_MAX_SEGMENTS := 32   # 单条光源的总段数预算（分束后按段扣）
+const DEFAULT_MAX_SPLIT := 8       # 单次命中最多生成多少条子光线（防分束爆炸）
+const MIN_ENERGY := 0.15           # 低于此能量的光线直接丢弃
 const BOUNCE_OFFSET := 0.5     # 反射后把起点推出镜面一点，避免再次命中自己
 const SCAN_STEP := 0.1         # 收集接收区时沿光线前进的最小步长
 
@@ -65,6 +70,112 @@ static func trace(
 		current_direction = current_direction.bounce(mirror_normal)
 		current_origin = endpoint + mirror_normal * BOUNCE_OFFSET
 	return result
+
+
+## 多分支追踪：在 trace() 的基础上支持「光路表面」（OpticalSurface）。
+## 反射照旧由本类处理；折射 / 分束 / 传送由表面自己的 on_ray() 返回出射光线。
+## 返回若干条折线（分束 = 多条），顺序按产生先后。
+## 旧接口 trace() 原样保留，只有镜面链路的关卡行为完全不变。
+static func trace_multi(
+	space: PhysicsDirectSpaceState2D,
+	origin: Vector2,
+	direction: Vector2,
+	max_segments: int = DEFAULT_MAX_SEGMENTS,
+	max_length: float = DEFAULT_MAX_LENGTH
+) -> Array[LightTrace]:
+	var traces: Array[LightTrace] = []
+	var queue: Array[Dictionary] = [
+		{
+			"origin": origin,
+			"dir": direction.normalized(),
+			"energy": 1.0,
+			"visited": {},
+		}
+	]
+	var budget := maxi(max_segments, 1)
+
+	while not queue.is_empty() and budget > 0:
+		var ray: Dictionary = queue.pop_front()
+		var trace := LightTrace.new()
+		var current_origin: Vector2 = ray["origin"]
+		var current_direction: Vector2 = ray["dir"]
+		var energy: float = ray["energy"]
+		var visited: Dictionary = ray["visited"]
+		var remaining: float = max_length
+		var bounces := 0
+
+		trace.segments.append(current_origin)
+		while budget > 0 and bounces <= DEFAULT_MAX_BOUNCES:
+			bounces += 1
+			budget -= 1
+
+			var segment_end := current_origin + current_direction * remaining
+			var hit := space.intersect_ray(
+				PhysicsRayQueryParameters2D.create(current_origin, segment_end, MASK_BLOCKING)
+			)
+			if hit.is_empty():
+				trace.segments.append(segment_end)
+				_scan_receivers(space, trace, current_origin, segment_end)
+				break
+
+			var endpoint: Vector2 = hit.position
+			var collider := hit.collider as CollisionObject2D
+			var normal: Vector2 = hit.normal
+			trace.segments.append(endpoint)
+			_scan_receivers(space, trace, current_origin, endpoint)
+			remaining -= current_origin.distance_to(endpoint)
+
+			if collider == null or remaining <= 0.0:
+				break
+			if collider.collision_layer & LAYER_MIRROR:
+				current_direction = current_direction.bounce(normal)
+				current_origin = endpoint + normal * BOUNCE_OFFSET
+				continue
+			if collider.has_method("on_ray"):
+				_spawn_children(collider, current_direction, normal, endpoint, energy, visited, queue)
+				break
+			break  # 遮光物：光线到此为止
+
+		if trace.segments.size() >= 2:
+			traces.append(trace)
+
+	return traces
+
+
+## 把一次表面命中的出射光线放进待处理队列（内部使用）
+static func _spawn_children(
+	surface: Object,
+	in_dir: Vector2,
+	normal: Vector2,
+	hit_pos: Vector2,
+	energy: float,
+	visited: Dictionary,
+	queue: Array[Dictionary]
+) -> void:
+	# 同一条光线以同一方向再次进入同一表面 = 传送门成环，直接丢弃
+	var key := "%d@%d" % [surface.get_instance_id(), int(in_dir.angle() * 1000.0)]
+	if visited.has(key):
+		return
+	visited[key] = true
+
+	var outs: Array = surface.call("on_ray", in_dir, normal, hit_pos, energy)
+	var spawned := 0
+	for out in outs:
+		if spawned >= DEFAULT_MAX_SPLIT:
+			break
+		if typeof(out) != TYPE_DICTIONARY:
+			continue
+		var out_dir: Vector2 = out.get("dir", Vector2.ZERO)
+		var out_energy: float = float(out.get("energy", energy))
+		if out_dir.length_squared() < 0.000001 or out_energy < MIN_ENERGY:
+			continue
+		queue.append({
+			"origin": out.get("origin", hit_pos),
+			"dir": out_dir.normalized(),
+			"energy": out_energy,
+			"visited": visited.duplicate(),
+		})
+		spawned += 1
 
 
 static func _scan_receivers(
