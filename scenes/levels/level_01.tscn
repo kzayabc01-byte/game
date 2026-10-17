@@ -9,6 +9,9 @@
 
 [node name="Level01" instance=ExtResource("1_base")]
 
+[node name="LevelManager" parent="."]
+level_name = "示例关卡 · 两段式开门"
+
 [node name="Source" parent="Blocks" instance=ExtResource("2_source")]
 position = Vector2(120, 400)
 
