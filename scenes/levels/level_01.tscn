@@ -6,7 +6,7 @@
 [ext_resource type="PackedScene" uid="uid://dvpqvneon1uhf" path="res://blocks/mirror/mirror.tscn" id="4_mirror"]
 [ext_resource type="PackedScene" uid="uid://bodh855d3ngah" path="res://blocks/cocoon/cocoon.tscn" id="5_cocoon"]
 [ext_resource type="PackedScene" uid="uid://besbvqa4lgcp5" path="res://blocks/light_door/light_door.tscn" id="6_door"]
-[ext_resource type="PackedScene" path="res://scenes/levels/level_02.tscn" id="7_next"]
+[ext_resource type="PackedScene" path="res://scenes/levels/level_02_折射入门.tscn" id="7_next"]
 
 [node name="Level01" instance=ExtResource("1_base")]
 

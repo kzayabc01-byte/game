@@ -8,6 +8,10 @@
 
 config_version=5
 
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
 [application]
 
 config/name="光线游戏"
@@ -51,7 +55,7 @@ reset_level={
 2d_physics/layer_1="遮光物（墙体/门板）"
 2d_physics/layer_2="镜面"
 2d_physics/layer_3="机关接收区"
-2d_physics/layer_4="折射面（偏转/分光/变色）"
+2d_physics/layer_4="折射体（偏转/分光/变色/融化）"
 2d_physics/layer_5="传送门"
 
 [rendering]

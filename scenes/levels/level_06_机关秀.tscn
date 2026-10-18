@@ -11,7 +11,7 @@
 [ext_resource type="PackedScene" path="res://blocks/pressure_sensor/pressure_sensor.tscn" id="9_sensor"]
 [ext_resource type="PackedScene" path="res://blocks/cocoon/cocoon.tscn" id="10_cocoon"]
 
-[node name="Level02" instance=ExtResource("1_base")]
+[node name="Level06" instance=ExtResource("1_base")]
 
 [node name="LevelManager" parent="." index="3"]
 level_name = "机关秀 · 实体机关组"

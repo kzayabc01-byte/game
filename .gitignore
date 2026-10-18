@@ -6,3 +6,7 @@
 Thumbs.db
 ~$*
 *.pptx
+
+# 本机 Godot 路径与缓存（每台机器自己一份，不要提交）
+tools/godot_path.cfg
+tools/.cache/

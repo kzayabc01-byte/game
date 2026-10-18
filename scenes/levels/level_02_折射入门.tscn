@@ -1,0 +1,46 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="2_source"]
+[ext_resource type="PackedScene" path="res://blocks/wall/wall.tscn" id="3_wall"]
+[ext_resource type="PackedScene" path="res://blocks/cocoon/cocoon.tscn" id="4_cocoon"]
+[ext_resource type="PackedScene" path="res://blocks/refract_surface/refract_surface.tscn" id="5_refract"]
+
+[node name="Level02" instance=ExtResource("1_base")]
+
+[node name="LevelManager" parent="."]
+level_name = "示例 2 · 折射偏折"
+
+[node name="Source" parent="Blocks" instance=ExtResource("2_source")]
+position = Vector2(140, 460)
+rotation = -0.349
+
+[node name="RefractPlate" parent="Blocks" instance=ExtResource("5_refract")]
+position = Vector2(380, 460)
+rotation = 1.5708
+mode = 0
+bend_degrees = -35
+
+[node name="Cocoon" parent="Blocks" instance=ExtResource("4_cocoon")]
+position = Vector2(588.98, 310.87)
+
+[node name="BlockWall" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(330, 397)
+rotation = -0.321
+
+[node name="FrameTop" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(576, 40)
+scale = Vector2(18, 1)
+
+[node name="FrameBottom" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(576, 608)
+scale = Vector2(18, 1)
+
+[node name="FrameLeft" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(40, 324)
+scale = Vector2(1, 9)
+
+[node name="FrameRight" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(1112, 324)
+scale = Vector2(1, 9)
+
