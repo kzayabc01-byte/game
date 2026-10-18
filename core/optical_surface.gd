@@ -12,6 +12,7 @@ extends StaticBody2D
 ##   2. 光线系统在光线命中本表面时调用 on_ray()
 ##   3. 返回 0..N 条出射光线：
 ##        { "origin": Vector2, "dir": Vector2（单位向量）, "energy": float }
+##        可选 "color"（Color）：改变出射光颜色；缺省 = 继承入射颜色
 ##      返回空数组 = 这条光线被吞掉（吸收 / 没配对的门）
 ##   4. 能量语义：光源 1.0；镜面 1.0；折射 ×0.95；分束 ×0.6；传送 ×0.8；< 0.15 丢弃
 ##   5. 失败约定：返回非法数据（零向量 / 负能量 / 起点在自身形状内）由光线系统丢弃并警告，
@@ -33,9 +34,13 @@ func on_ray(_in_dir: Vector2, _normal: Vector2, _hit_pos: Vector2, _energy: floa
 
 
 ## 统一构造出射光线（子类用这个，别手搓 Dictionary，容易漏字段）
-static func make_ray(origin: Vector2, dir: Vector2, energy: float) -> Dictionary:
-	return {
+## color 可选：传入不透明颜色 = 出射光变为该颜色；不传 = 继承入射颜色
+static func make_ray(origin: Vector2, dir: Vector2, energy: float, color: Color = Color(0, 0, 0, 0)) -> Dictionary:
+	var ray := {
 		"origin": origin,
 		"dir": dir.normalized(),
 		"energy": energy,
 	}
+	if color.a > 0.0:
+		ray["color"] = color
+	return ray

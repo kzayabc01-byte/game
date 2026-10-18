@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://blocks/color_changer/color_changer.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_plate"]
+resource_local_to_scene = true
+size = Vector2(64, 8)
+
+[node name="ColorChanger" type="StaticBody2D"]
+collision_layer = 8
+collision_mask = 0
+script = ExtResource("1_script")
+recolor = Color(1, 0, 0, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_plate")

@@ -4,6 +4,7 @@ extends RefCounted
 ## 光线物理计算（静态工具类）：
 ## 从起点沿方向追踪光线，遇镜面反射、遇遮光物停下，
 ## 沿途收集被扫过的机关接收区（接收区透明，不阻挡光线）。
+## 颜色随光路传播：每条 LightTrace 一个颜色；光路表面出射光线可携带 "color" 改色。
 ## 组员一般不需要直接使用本类，写机关只需继承 LightReceiver。
 
 const LAYER_OPAQUE := 1        # 碰撞层 1：遮光物（墙体 / 门板）
@@ -25,14 +26,16 @@ const SCAN_STEP := 0.1         # 收集接收区时沿光线前进的最小步�
 
 
 class ReceiverHit:
-	## 一段光线扫过的一个机关接收区
+	## 一段光线扫过的一个机关接收区（含照到它的光色）
 	var receiver: Area2D
 	var position: Vector2
+	var color: Color = Color.WHITE
 
 
 class LightTrace:
-	## 一次完整追踪的结果：折线顶点 + 沿途命中的接收区
+	## 一次完整追踪的结果：折线顶点 + 颜色 + 沿途命中的接收区
 	var segments: PackedVector2Array = PackedVector2Array()
+	var color: Color = Color.WHITE
 	var receiver_hits: Array[ReceiverHit] = []
 
 
@@ -62,7 +65,7 @@ static func trace(
 			if collider != null and collider.collision_layer & LAYER_MIRROR:
 				hit_mirror = true
 				mirror_normal = hit.normal
-		_scan_receivers(space, result, current_origin, endpoint)
+		_scan_receivers(space, result, current_origin, endpoint, Color.WHITE)
 		result.segments.append(endpoint)
 		remaining -= current_origin.distance_to(endpoint)
 		if not hit_mirror or remaining <= 0.0:
@@ -74,14 +77,15 @@ static func trace(
 
 ## 多分支追踪：在 trace() 的基础上支持「光路表面」（OpticalSurface）。
 ## 反射照旧由本类处理；折射 / 分束 / 传送由表面自己的 on_ray() 返回出射光线。
-## 返回若干条折线（分束 = 多条），顺序按产生先后。
+## 返回若干条折线（分束 = 多条），顺序按产生先后；每条折线自带颜色（trace.color）。
 ## 旧接口 trace() 原样保留，只有镜面链路的关卡行为完全不变。
 static func trace_multi(
 	space: PhysicsDirectSpaceState2D,
 	origin: Vector2,
 	direction: Vector2,
 	max_segments: int = DEFAULT_MAX_SEGMENTS,
-	max_length: float = DEFAULT_MAX_LENGTH
+	max_length: float = DEFAULT_MAX_LENGTH,
+	start_color: Color = Color.WHITE
 ) -> Array[LightTrace]:
 	var traces: Array[LightTrace] = []
 	var queue: Array[Dictionary] = [
@@ -90,6 +94,7 @@ static func trace_multi(
 			"dir": direction.normalized(),
 			"energy": 1.0,
 			"visited": {},
+			"color": start_color,
 		}
 	]
 	var budget := maxi(max_segments, 1)
@@ -101,6 +106,8 @@ static func trace_multi(
 		var current_direction: Vector2 = ray["dir"]
 		var energy: float = ray["energy"]
 		var visited: Dictionary = ray["visited"]
+		var color: Color = ray["color"]
+		trace.color = color
 		var remaining: float = max_length
 		var bounces := 0
 
@@ -115,14 +122,14 @@ static func trace_multi(
 			)
 			if hit.is_empty():
 				trace.segments.append(segment_end)
-				_scan_receivers(space, trace, current_origin, segment_end)
+				_scan_receivers(space, trace, current_origin, segment_end, color)
 				break
 
 			var endpoint: Vector2 = hit.position
 			var collider := hit.collider as CollisionObject2D
 			var normal: Vector2 = hit.normal
 			trace.segments.append(endpoint)
-			_scan_receivers(space, trace, current_origin, endpoint)
+			_scan_receivers(space, trace, current_origin, endpoint, color)
 			remaining -= current_origin.distance_to(endpoint)
 
 			if collider == null or remaining <= 0.0:
@@ -132,7 +139,7 @@ static func trace_multi(
 				current_origin = endpoint + normal * BOUNCE_OFFSET
 				continue
 			if collider.has_method("on_ray"):
-				_spawn_children(collider, current_direction, normal, endpoint, energy, visited, queue)
+				_spawn_children(collider, current_direction, normal, endpoint, energy, color, visited, queue)
 				break
 			break  # 遮光物：光线到此为止
 
@@ -149,6 +156,7 @@ static func _spawn_children(
 	normal: Vector2,
 	hit_pos: Vector2,
 	energy: float,
+	color: Color,
 	visited: Dictionary,
 	queue: Array[Dictionary]
 ) -> void:
@@ -167,6 +175,7 @@ static func _spawn_children(
 			continue
 		var out_dir: Vector2 = out.get("dir", Vector2.ZERO)
 		var out_energy: float = float(out.get("energy", energy))
+		var out_color: Color = out.get("color", color)
 		if out_dir.length_squared() < 0.000001 or out_energy < MIN_ENERGY:
 			continue
 		queue.append({
@@ -174,6 +183,7 @@ static func _spawn_children(
 			"dir": out_dir.normalized(),
 			"energy": out_energy,
 			"visited": visited.duplicate(),
+			"color": out_color,
 		})
 		spawned += 1
 
@@ -182,7 +192,8 @@ static func _scan_receivers(
 	space: PhysicsDirectSpaceState2D,
 	result: LightTrace,
 	from: Vector2,
-	to: Vector2
+	to: Vector2,
+	color: Color
 ) -> void:
 	# 收集 [from, to] 这段自由光线扫过的所有接收区（按从近到远顺序）
 	if from.distance_squared_to(to) < 0.01:
@@ -203,5 +214,6 @@ static func _scan_receivers(
 		var entry := ReceiverHit.new()
 		entry.receiver = collider
 		entry.position = hit.position
+		entry.color = color
 		result.receiver_hits.append(entry)
 		scan_origin = hit.position + direction * SCAN_STEP
