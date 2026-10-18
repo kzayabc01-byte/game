@@ -1,0 +1,64 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="2_source"]
+[ext_resource type="PackedScene" path="res://blocks/wall/wall.tscn" id="3_wall"]
+[ext_resource type="PackedScene" path="res://blocks/stone_door/stone_door.tscn" id="4_stone_door"]
+[ext_resource type="PackedScene" path="res://blocks/trigger_switch/trigger_switch.tscn" id="5_trigger"]
+[ext_resource type="PackedScene" path="res://blocks/moving_base/moving_base.tscn" id="6_base"]
+[ext_resource type="PackedScene" path="res://blocks/mirror/mirror.tscn" id="7_mirror"]
+[ext_resource type="PackedScene" path="res://blocks/stone_block/stone_block.tscn" id="8_block"]
+[ext_resource type="PackedScene" path="res://blocks/pressure_sensor/pressure_sensor.tscn" id="9_sensor"]
+[ext_resource type="PackedScene" path="res://blocks/cocoon/cocoon.tscn" id="10_cocoon"]
+
+[node name="Level02" instance=ExtResource("1_base")]
+
+[node name="LevelManager" parent="." index="3"]
+level_name = "机关秀 · 实体机关组"
+
+[node name="Source" parent="Blocks" instance=ExtResource("2_source")]
+position = Vector2(120, 400)
+
+[node name="StoneDoor" parent="Blocks" instance=ExtResource("4_stone_door")]
+position = Vector2(230, 437)
+
+[node name="TriggerSwitch" parent="Blocks" instance=ExtResource("5_trigger")]
+position = Vector2(400, 270)
+latch = true
+
+[node name="MovingBase" parent="Blocks" instance=ExtResource("6_base")]
+position = Vector2(500, 300)
+path_b = Vector2(0, 200)
+pause_at_ends = 0.5
+start_enabled = false
+
+[node name="Mirror" parent="Blocks/MovingBase" instance=ExtResource("7_mirror")]
+rotation = 0.785398
+
+[node name="StoneBlock" parent="Blocks" instance=ExtResource("8_block")]
+position = Vector2(460, 520)
+
+[node name="PressureSensor" parent="Blocks" instance=ExtResource("9_sensor")]
+position = Vector2(260, 520)
+
+[node name="Cocoon" parent="Blocks" instance=ExtResource("10_cocoon")]
+position = Vector2(500, 600)
+
+[node name="WallTop" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(320, 60)
+scale = Vector2(6, 1)
+
+[node name="WallBottom" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(320, 680)
+scale = Vector2(6, 1)
+
+[node name="WallLeft" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(60, 400)
+scale = Vector2(1, 3)
+
+[node name="WallRight" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(640, 400)
+scale = Vector2(1, 3)
+
+[connection signal="pressed_changed" from="Blocks/PressureSensor" to="Blocks/MovingBase" method="set_enabled"]
+[connection signal="active_changed" from="Blocks/TriggerSwitch" to="Blocks/StoneDoor" method="set_external_open"]

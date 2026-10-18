@@ -6,10 +6,12 @@ extends Control
 
 const LEVEL_PATHS: Array[String] = [
 	"res://scenes/levels/level_01.tscn",
+	"res://scenes/levels/level_02.tscn",
 ]
 
 const LEVEL_NAMES: Array[String] = [
 	"示例关卡 · 两段式开门",
+	"机关秀 · 实体机关组",
 ]
 
 @onready var _level_list: VBoxContainer = %LevelList
