@@ -1,7 +1,7 @@
 ﻿<#
     resolve_godot.ps1 —— 光线游戏 · Godot 路径解析器（唯一有“智能”的地方）
 
-    职责：找到本机可用的 Godot 4.4+，校验版本，把结果写成环境变量文件供 .bat 调用。
+    职责：找到本机可用的 Godot 4.7+，校验版本，把结果写成环境变量文件供 .bat 调用。
 
     探测顺序（命中即停，快 → 慢）：
       1. 环境变量 GODOT
@@ -14,7 +14,7 @@
     设计要点：
       * 允许把“文件夹”当路径传入。解压后目录常常就叫 Godot_v4.7.2-stable_win64.exe，
         解析器会自动进一层找真正的 exe（这是最容易踩的坑）。
-      * 版本低于 4.7 一律硬拦截（project.godot 已声明 features=4.4）。
+      * 版本低于 4.7 一律硬拦截（project.godot 已声明 features=4.7）。
       * 同时给出 GUI 版和 _console.exe 版：前者跑游戏/编辑器，后者跑无头测试（才有 stdout）。
 
     用法：
@@ -42,7 +42,7 @@ $EnvFile   = Join-Path $CacheDir 'env.cmd'
 $CfgFile   = Join-Path $ToolsDir 'godot_path.cfg'
 
 $MinMajor = 4
-$MinMinor = 4
+$MinMinor = 7
 
 function Say  { param([string]$m) if (-not $Quiet) { Write-Host $m } }
 function SayE { param([string]$m) Write-Host $m -ForegroundColor Red }
@@ -310,4 +310,4 @@ foreach ($dir in @((Join-Path $env:USERPROFILE 'Downloads'), (Join-Path $env:USE
 }
 $hints = @("双击 tools\tasks\05_设置Godot路径.bat，把 Godot 的 exe（或文件夹）拖进去即可。")
 if ($zips.Count -gt 0) { $hints += ("检测到未解压的压缩包：{0} —— Godot 是绿色版，先解压再用。" -f $zips[0].Name) }
-Fail "没有找到可用的 Godot 4.4+。" $hints
+Fail "没有找到可用的 Godot 4.7+。" $hints
