@@ -7,9 +7,10 @@ extends RefCounted
 ## 说明：人B 的颜色积木交付后在这里补条目即可，其余代码不用动。
 
 const CATEGORY_OPTICS := "光学"
+const CATEGORY_SWITCH := "开关"
 const CATEGORY_MECHANISM := "机关"
 const CATEGORY_TERRAIN := "地形"
-const CATEGORIES: Array[String] = [CATEGORY_OPTICS, CATEGORY_MECHANISM, CATEGORY_TERRAIN]
+const CATEGORIES: Array[String] = [CATEGORY_OPTICS, CATEGORY_SWITCH, CATEGORY_MECHANISM, CATEGORY_TERRAIN]
 
 ## props 条目：{"name": StringName, "label": String, "kind": StringName,
 ##             "options": Array[String]（仅 enum）}
@@ -66,9 +67,9 @@ static var _entries: Array[Dictionary] = [
 			{"name": &"melt_efficiency", "label": "融化效率", "kind": &"float"},
 		],
 	},
-	# ---------- 机关 ----------
+	# ---------- 开关 ----------
 	{
-		"key": "trigger_switch", "label": "触发开关", "category": CATEGORY_MECHANISM,
+		"key": "trigger_switch", "label": "触发开关", "category": CATEGORY_SWITCH,
 		"path": "res://blocks/trigger_switch/trigger_switch.tscn", "size": Vector2(40, 40),
 		"props": [
 			{"name": &"latch", "label": "自锁", "kind": &"bool"},
@@ -77,7 +78,7 @@ static var _entries: Array[Dictionary] = [
 		],
 	},
 	{
-		"key": "color_trigger", "label": "颜色感应开关", "category": CATEGORY_MECHANISM,
+		"key": "color_trigger", "label": "颜色感应开关", "category": CATEGORY_SWITCH,
 		"path": "res://blocks/trigger_switch/trigger_switch.tscn", "size": Vector2(40, 40),
 		"props": [
 			{"name": &"latch", "label": "自锁", "kind": &"bool"},
@@ -87,37 +88,21 @@ static var _entries: Array[Dictionary] = [
 		"preset": {"match_color": true, "color_filter": Color(1.0, 0.25, 0.25)},
 	},
 	{
-		"key": "pressure_sensor", "label": "压力传感器", "category": CATEGORY_MECHANISM,
+		"key": "pressure_sensor", "label": "压力传感器", "category": CATEGORY_SWITCH,
 		"path": "res://blocks/pressure_sensor/pressure_sensor.tscn", "size": Vector2(56, 56), "props": [],
 	},
+	# ---------- 机关（纯执行器：动作由电线配置） ----------
 	{
 		"key": "stone_door", "label": "石门", "category": CATEGORY_MECHANISM,
-		"path": "res://blocks/stone_door/stone_door.tscn", "size": Vector2(24, 96),
-		"props": [
-			{"name": &"mode", "label": "门模式", "kind": &"enum", "options": ["保持开启", "切换"]},
-			{"name": &"open_offset", "label": "开启偏移", "kind": &"vector2"},
-			{"name": &"move_speed", "label": "移动速度", "kind": &"float"},
-		],
+		"path": "res://blocks/stone_door/stone_door.tscn", "size": Vector2(24, 96), "props": [],
 	},
 	{
 		"key": "light_door", "label": "光门", "category": CATEGORY_MECHANISM,
-		"path": "res://blocks/light_door/light_door.tscn", "size": Vector2(64, 24),
-		"props": [
-			{"name": &"mode", "label": "门模式", "kind": &"enum", "options": ["保持开启", "切换"]},
-			{"name": &"open_offset", "label": "开启偏移", "kind": &"vector2"},
-			{"name": &"move_speed", "label": "移动速度", "kind": &"float"},
-		],
+		"path": "res://blocks/light_door/light_door.tscn", "size": Vector2(64, 24), "props": [],
 	},
 	{
 		"key": "moving_base", "label": "移动底座", "category": CATEGORY_MECHANISM,
-		"path": "res://blocks/moving_base/moving_base.tscn", "size": Vector2(64, 32),
-		"props": [
-			{"name": &"path_a", "label": "起点偏移", "kind": &"vector2"},
-			{"name": &"path_b", "label": "终点偏移", "kind": &"vector2"},
-			{"name": &"speed", "label": "移动速度", "kind": &"float"},
-			{"name": &"pause_at_ends", "label": "端点停顿(秒)", "kind": &"float"},
-			{"name": &"start_enabled", "label": "初始启用", "kind": &"bool"},
-		],
+		"path": "res://blocks/moving_base/moving_base.tscn", "size": Vector2(64, 32), "props": [],
 	},
 	{
 		"key": "cocoon", "label": "蚕茧", "category": CATEGORY_MECHANISM,

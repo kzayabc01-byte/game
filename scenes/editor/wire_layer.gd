@@ -1,9 +1,9 @@
 class_name WireLayer
 extends Node2D
 
-## 电线层（仅编辑器）：把「触发机关 → 机关」的真实信号连接画成电线，方便确认谁触发谁。
-## 线只是视觉层：连接本身存在于关卡节点上，保存时只写 [connection] 条目；
-## 这个层不属于关卡子树，游戏里没有它 → 电线永远不出现在正式关卡里。
+## 电线层（仅编辑器）：把「开关 → 机关」的电线节点（ActionLink）画成曲线，方便确认谁触发谁。
+## 电线本身 = 关卡里的 ActionLink 节点（存动作参数 + 一条开关信号连接），
+## 这个层只是视觉：不属于关卡子树，游戏里没有它 → 电线永远不出现在正式关卡里。
 ## 撤销/重做会整体换掉关卡子树 → clear() + rebuild_from_level() 重新内省连接。
 
 const SAMPLE_COUNT := 24
@@ -17,8 +17,7 @@ const SIGNAL_COLORS := {
 }
 const WIRE_COLOR_FALLBACK := Color(0.7, 0.7, 0.75)
 
-## 每条线：{"source": Node, "target": Node, "signal": StringName,
-##          "method": StringName, "callable": Callable}
+## 每条线：{"link": ActionLink, "source": Node, "target": Node2D, "signal": StringName}
 var _wires: Array[Dictionary] = []
 
 ## 高亮的目标积木（拖线中合法目标提示）
@@ -42,7 +41,8 @@ func _process(_delta: float) -> void:
 	# 关卡子树被换掉时旧节点已销毁：静默丢弃死线（连接随节点一起没了）
 	for i in range(_wires.size() - 1, -1, -1):
 		var wire: Dictionary = _wires[i]
-		if not is_instance_valid(wire["source"]) or not is_instance_valid(wire["target"]):
+		if not is_instance_valid(wire["link"]) or not is_instance_valid(wire["source"]) \
+				or not is_instance_valid(wire["target"]):
 			_wires.remove_at(i)
 			if selected_index == i:
 				selected_index = -1
@@ -63,33 +63,35 @@ func _draw() -> void:
 		_draw_source_hint()
 
 
-## 建立一条电线：校验 WIRE_TABLE 兼容表 → 真实 connect → 建档画线。失败返回 false。
-func add_wire(source: Node, target: Node, signal_name: StringName, method_name: StringName) -> bool:
-	if not LevelFileIO.is_valid_wire(signal_name, method_name):
+## 建立一条电线记录。连接（开关信号 → link._on_signal）由编辑器先 connect 好，这里只建档画线。
+func add_wire(link: ActionLink, source: Node, signal_name: StringName) -> bool:
+	if link == null or source == null:
 		return false
-	if has_wire(source, target, signal_name, method_name):
+	if not LevelFileIO.is_valid_wire(signal_name, ActionLink.METHOD_NAME):
 		return false
-	if not source.has_signal(signal_name) or not target.has_method(method_name):
+	if has_wire(link, source, signal_name):
 		return false
-	var callback := Callable(target, method_name)
-	if source.connect(signal_name, callback) != OK:
+	var target := link.get_target()
+	if target == null:
 		return false
 	_wires.append({
-		"source": source, "target": target,
-		"signal": signal_name, "method": method_name, "callable": callback,
+		"link": link, "source": source, "target": target, "signal": signal_name,
 	})
 	queue_redraw()
 	return true
 
 
-## 断开并删除一条线。index 越界返回 false。
+## 断开并删除一条线（连同电线节点一起删掉）。index 越界返回 false。
 func remove_wire(index: int) -> bool:
 	if index < 0 or index >= _wires.size():
 		return false
 	var wire: Dictionary = _wires[index]
+	var link := wire["link"] as ActionLink
 	var source := wire["source"] as Node
-	if is_instance_valid(source) and source.is_connected(wire["signal"], wire["callable"]):
-		source.disconnect(wire["signal"], wire["callable"])
+	if is_instance_valid(source) and source.is_connected(wire["signal"], Callable(link, ActionLink.METHOD_NAME)):
+		source.disconnect(wire["signal"], Callable(link, ActionLink.METHOD_NAME))
+	if is_instance_valid(link):
+		link.queue_free()
 	_wires.remove_at(index)
 	if selected_index == index:
 		selected_index = -1
@@ -99,20 +101,19 @@ func remove_wire(index: int) -> bool:
 	return true
 
 
-func has_wire(source: Node, target: Node, signal_name: StringName, method_name: StringName) -> bool:
-	return find_wire(source, target, signal_name, method_name) >= 0
+func has_wire(link: ActionLink, source: Node, signal_name: StringName) -> bool:
+	return find_wire(link, source, signal_name) >= 0
 
 
-func find_wire(source: Node, target: Node, signal_name: StringName, method_name: StringName) -> int:
+func find_wire(link: ActionLink, source: Node, signal_name: StringName) -> int:
 	for i in _wires.size():
 		var wire: Dictionary = _wires[i]
-		if wire["source"] == source and wire["target"] == target \
-				and wire["signal"] == signal_name and wire["method"] == method_name:
+		if wire["link"] == link and wire["source"] == source and wire["signal"] == signal_name:
 			return i
 	return -1
 
 
-## 删除所有碰到 node 的电线（删除积木前调用）
+## 删除所有碰到 node 的电线（删除积木前调用，电线节点一并释放）
 func remove_wires_touching(node: Node) -> int:
 	var removed := 0
 	for i in range(_wires.size() - 1, -1, -1):
@@ -146,28 +147,36 @@ func hit_test(point: Vector2) -> int:
 	return -1
 
 
-## 关卡子树换新后重建线记录：内省全部积木信号连接，按 WIRE_TABLE 过滤。
+## 关卡子树换新后重建线记录：遍历电线节点（ActionLink）+ 入向连接。
 ## 连接已经随关卡文件加载存在，这里只建档，不重复 connect。
 func rebuild_from_level(level_root: Node) -> void:
 	_wires.clear()
 	selected_index = -1
 	for node in LevelFileIO.walk_instance_roots(level_root):
-		for sig in node.get_signal_list():
-			var signal_name: StringName = sig["name"]
-			for conn in node.get_signal_connection_list(signal_name):
-				var callback: Callable = conn["callable"]
-				var target := callback.get_object() as Node
-				if target == null or target.scene_file_path == "":
-					continue
-				var method_name := callback.get_method()
-				if method_name.is_empty():
-					continue
-				if not LevelFileIO.is_valid_wire(signal_name, method_name):
-					continue
-				_wires.append({
-					"source": node, "target": target,
-					"signal": signal_name, "method": method_name, "callable": callback,
-				})
+		if not node is ActionLink:
+			continue
+		var link := node as ActionLink
+		var source: Node = null
+		var signal_name := StringName()
+		for conn in node.get_incoming_connections():
+			var sig: Signal = conn.get("signal")
+			var callback: Callable = conn.get("callable")
+			if callback.get_object() != link or callback.get_method() != ActionLink.METHOD_NAME:
+				continue
+			source = sig.get_object() as Node
+			signal_name = sig.get_name()
+			break
+		if source == null or signal_name == StringName() or not LevelFileIO.is_valid_wire(signal_name, ActionLink.METHOD_NAME):
+			# 悬空电线（没有入向连接的孤儿节点）：编辑器里清掉，文件里不写
+			link.queue_free()
+			continue
+		var target := link.get_target()
+		if target == null:
+			link.queue_free()
+			continue
+		_wires.append({
+			"link": link, "source": source, "target": target, "signal": signal_name,
+		})
 	queue_redraw()
 
 
@@ -245,6 +254,31 @@ func _draw_wire(index: int) -> void:
 	# 端口圆点：源（右侧）/ 目标（左侧）
 	_draw_port(from_pos, base_color, selected)
 	_draw_port(to_pos, base_color, selected)
+	# 动作参数摘要：贴在曲线中点，编辑时一眼看清这根电线让机关做什么
+	var link := wire["link"] as ActionLink
+	if link != null:
+		_draw_action_summary(link, points[SAMPLE_COUNT / 2])
+
+
+## 电线中点上的动作摘要（位移/旋转/时长/循环/恢复）
+func _draw_action_summary(link: ActionLink, center: Vector2) -> void:
+	var parts := PackedStringArray()
+	parts.append("移(%d,%d)" % [int(link.move_offset.x), int(link.move_offset.y)])
+	if absf(link.rotate_degrees) > 0.01:
+		parts.append("转%d°" % int(link.rotate_degrees))
+	parts.append("%.1fs" % link.duration)
+	if link.repeat:
+		parts.append("循环")
+	if not link.restore_on_off:
+		parts.append("不恢复")
+	var text := " ".join(parts)
+	var font := ThemeDB.fallback_font
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
+	var box := Rect2(center - text_size / 2.0 - Vector2(6, 3), text_size + Vector2(12, 6))
+	draw_rect(box, Color(0.05, 0.06, 0.08, 0.7))
+	draw_rect(box, Color(1, 1, 1, 0.25), false, 1.0)
+	draw_string(font, box.position + Vector2(6, 14), text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.95, 0.9))
 
 
 func _draw_port(center: Vector2, color: Color, selected: bool) -> void:

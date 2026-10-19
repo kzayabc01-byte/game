@@ -29,16 +29,15 @@ func _run_test() -> void:
 	for node in get_tree().get_nodes_in_group("cocoons"):
 		cocoon = node as Cocoon
 	for node in get_tree().get_nodes_in_group("resettables"):
-		if node is MovingBase:
-			base = node
-		elif node is StoneBlock:
+		if node is StoneBlock:
 			block = node
 		elif node is PressureSensor:
 			sensor = node
-		elif node is StoneDoor:
-			door = node
 		elif node is TriggerSwitch:
 			trigger = node
+	# 石门/底座是纯执行器（不进 resettables 组），按名字找
+	base = get_tree().root.find_child("MovingBase", true, false) as MovingBase
+	door = get_tree().root.find_child("StoneDoor", true, false) as StoneDoor
 	if source == null or cocoon == null or base == null or block == null or sensor == null or door == null or trigger == null:
 		_check("关卡节点齐全", false)
 		_finish()

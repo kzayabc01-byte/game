@@ -123,6 +123,25 @@ func _classify(folder: String, node: Node) -> void:
 		_error(folder, "Area2D 但没继承 LightReceiver：机关请 extends LightReceiver")
 		return
 
+	# 开关 → 电线 → 机关 三元模型：门/底座是纯执行器（根节点为位置锚点，由电线驱动）
+	if node is LightDoor or node is StoneDoor:
+		var plate := node.get_node_or_null("DoorPlate") as CollisionObject2D
+		if plate == null:
+			_error(folder, "机关门缺少 DoorPlate 子节点")
+		elif (plate.collision_layer & LAYER_OPAQUE) == 0:
+			_error(folder, "机关门门板应放层 1")
+		else:
+			_ok(folder, "机关门 · 门板层 1（电线驱动）")
+		return
+
+	if node is MovingBase:
+		_ok(folder, "机关底座 · 纯执行器（电线驱动，镜面等由玩家放在上面）")
+		return
+
+	if node is ActionLink:
+		_ok(folder, "电线 · 开关到机关的动作通道（不是积木）")
+		return
+
 	if node is Node2D or node is Node:
 		_warn(folder, "未分类的积木（根节点 %s），确认它确实是关卡组件" % node.get_class())
 		return

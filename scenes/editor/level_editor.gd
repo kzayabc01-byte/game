@@ -5,8 +5,10 @@ extends Control
 ## 保存为标准 level_NN.tscn，与现有关卡管线完全兼容。
 ##
 ## 核心保证：
-##   * 电线 = 关卡节点上的真实信号连接；视觉层（WireLayer）只属于编辑器场景，
-##     保存时只写 [connection] 条目 → 游戏里天然没有电线
+##   * 电线 = 关卡里的电线节点（ActionLink：动作参数 + 一条开关信号连接）；
+##     视觉层（WireLayer）只属于编辑器场景，游戏里没有它 → 电线天然不可见
+##   * 三元模型：开关（触发/压力感应）→ 电线（移多少/转多少/时长/循环/恢复）
+##     → 机关（石门/光门/移动底座等纯执行器，自己不会感光）
 ##   * 六步加载管线：捕获干净属性 → 中和（process DISABLED + 关相机）→ 进树 →
 ##     编辑器相机 → deferred 清理（LevelManager UI / 蚕茧连接）→ 回写属性
 ##   * 撤销/重做 = 序列化快照 → user:// 临时文件重载换子树（50 步）
@@ -17,6 +19,7 @@ extends Control
 
 const LEVELS_DIR := "res://scenes/levels"
 const BASE_SCENE := "res://scenes/levels/level_base.tscn"
+const ACTION_LINK_SCENE := "res://blocks/action_link/action_link.tscn"
 const MENU_SCENE := "res://scenes/main/main.tscn"
 const UNDO_LIMIT := 50
 const GRID_SIZE := 32.0
@@ -233,8 +236,8 @@ func set_selected_property(prop_name: StringName, value: Variant, push_undo := t
 	_update_status()
 
 
-## 连接一条电线：signal/method 留空自动推断（触发开关 active_changed / 压力传感器
-## pressed_changed；目标有 set_external_open 优先，否则 set_enabled）
+## 连接一条电线：在目标机关旁生成电线节点（ActionLink），把开关信号连到它的 _on_signal。
+## 动作参数（移多少/转多少/时长/循环/恢复）随后在电线 Inspector 里配。
 func connect_wire(
 	source: Node2D, target: Node2D,
 	signal_name: StringName = &"", method_name: StringName = &"",
@@ -243,21 +246,22 @@ func connect_wire(
 		return false
 	if signal_name == &"":
 		signal_name = _source_signal_of(source)
-	if method_name == &"":
-		if target.has_method(&"set_external_open") \
-				and LevelFileIO.is_valid_wire(signal_name, &"set_external_open"):
-			method_name = &"set_external_open"
-		elif target.has_method(&"set_enabled") \
-				and LevelFileIO.is_valid_wire(signal_name, &"set_enabled"):
-			method_name = &"set_enabled"
-		else:
-			return false
+	if signal_name == &"" or not _is_valid_wire_target(target, signal_name):
+		return false
 	_push_undo()
-	var ok := _wire_layer.add_wire(source, target, signal_name, method_name)
-	if ok:
-		_rebuild_inspector()
-		_update_status()
-	return ok
+	var link := _spawn_link_for(target)
+	if link == null:
+		return false
+	if source.connect(signal_name, Callable(link, ActionLink.METHOD_NAME)) != OK:
+		link.queue_free()
+		return false
+	if not _wire_layer.add_wire(link, source, signal_name):
+		source.disconnect(signal_name, Callable(link, ActionLink.METHOD_NAME))
+		link.queue_free()
+		return false
+	_rebuild_inspector()
+	_update_status()
+	return true
 
 
 func undo() -> bool:
@@ -512,7 +516,7 @@ func _mount_level(instance: Node) -> void:
 		level_camera.enabled = false
 	var previous := _level_root
 	_level_holder.add_child(instance)
-	# 回写干净属性表，抵消 _ready 副作用（移动底座贴 path_a、传送门自动配对）
+	# 回写干净属性表，抵消 _ready 副作用（传送门自动配对）
 	LevelFileIO.restore_props(instance, clean_props)
 	_level_root = instance
 	clear_selection()
@@ -833,7 +837,7 @@ func _rebuild_inspector() -> void:
 		_build_wire_inspector()
 	elif _selection == null or not is_instance_valid(_selection):
 		var hint := Label.new()
-		hint.text = "未选中积木\n\n点击画面中的积木选中；\n点空白处取消；\n点击电线选中电线。\n\n选中触发开关/压力传感器后，\n从它右侧出现的 ○ 端口\n拖到机关上即可连线。"
+		hint.text = "未选中积木\n\n点击画面中的积木选中；\n点空白处取消；\n点击电线选中电线。\n\n选中触发开关/压力传感器后，\n从它右侧出现的 ○ 端口\n拖到任意积木上即可连线；\n点击电线可配置机关动作。"
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_inspector_content.add_child(hint)
@@ -882,7 +886,7 @@ func _build_block_inspector() -> void:
 	if _source_signal_of(_selection) != &"":
 		_inspector_content.add_child(_section_label("电线"))
 		var hint := Label.new()
-		hint.text = "从积木右侧的 ○ 端口\n按住拖到石门/移动底座上连线。\n点击电线可选中，Del 断开。"
+		hint.text = "从积木右侧的 ○ 端口\n按住拖到任意积木上连线。\n点击电线可选中，Del 断开。"
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		hint.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
 		_inspector_content.add_child(hint)
@@ -894,21 +898,48 @@ func _build_block_inspector() -> void:
 
 
 func _build_wire_inspector() -> void:
+	var index := _wire_layer.selected_index
+	var wires := _wire_layer.get_wires()
+	if index < 0 or index >= wires.size():
+		return
+	var wire: Dictionary = wires[index]
+	var link := wire["link"] as ActionLink
+	if link == null:
+		return
 	var title := Label.new()
 	title.text = "◎ 电线"
 	title.add_theme_font_size_override("font_size", 18)
 	_inspector_content.add_child(title)
 	var info := Label.new()
-	var index := _wire_layer.selected_index
-	var wires := _wire_layer.get_wires()
-	if index >= 0 and index < wires.size():
-		var wire: Dictionary = wires[index]
-		info.text = "%s.%s → %s.%s" % [
-			(wire["source"] as Node).name, wire["signal"],
-			(wire["target"] as Node).name, wire["method"],
-		]
+	info.text = "%s.%s → %s" % [
+		(wire["source"] as Node).name, wire["signal"],
+		(wire["target"] as Node).name,
+	]
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_inspector_content.add_child(info)
+
+	_inspector_content.add_child(_section_label("机关动作"))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	_inspector_content.add_child(grid)
+	_add_spin(grid, "水平移动 X", link.move_offset.x, 8.0, func(v: float) -> void:
+		_set_wire_property(index, &"move_offset", Vector2(v, link.move_offset.y), false))
+	_add_spin(grid, "垂直移动 Y", link.move_offset.y, 8.0, func(v: float) -> void:
+		_set_wire_property(index, &"move_offset", Vector2(link.move_offset.x, v), false))
+	_add_spin(grid, "旋转°", link.rotate_degrees, 15.0, func(v: float) -> void:
+		_set_wire_property(index, &"rotate_degrees", v, false))
+	_add_spin(grid, "运动时长(秒)", link.duration, 0.1, func(v: float) -> void:
+		_set_wire_property(index, &"duration", v, false))
+	_add_check(grid, "一直重复动作", link.repeat, func(on: bool) -> void:
+		_set_wire_property(index, &"repeat", on))
+	_add_check(grid, "断电后恢复原状", link.restore_on_off, func(on: bool) -> void:
+		_set_wire_property(index, &"restore_on_off", on))
+
+	var hint := Label.new()
+	hint.text = "开关 ON：机关从原位运动到动作位（位移+旋转同一动画）。\n开关 OFF：恢复原状，或停在当前位。\n循环：ON 期间原位↔动作位无限往返。"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_color_override("font_color", Color(0.75, 0.8, 0.7))
+	_inspector_content.add_child(hint)
 	var delete_button := Button.new()
 	delete_button.text = "断开这条电线"
 	delete_button.pressed.connect(_on_wire_delete_pressed.bind(index))
@@ -940,6 +971,47 @@ func _add_spin(parent: Container, label_text: String, value: float, step: float,
 	spin.focus_entered.connect(_push_undo)
 	parent.add_child(spin)
 	return spin
+
+
+## 复选控件：改动走 apply 回调
+func _add_check(parent: Container, label_text: String, value: bool, apply: Callable) -> void:
+	if label_text != "":
+		var label := Label.new()
+		label.text = label_text
+		parent.add_child(label)
+	var check := CheckBox.new()
+	check.button_pressed = value
+	check.toggled.connect(func(on: bool) -> void: apply.call(on))
+	parent.add_child(check)
+
+
+## 改电线节点（ActionLink）的属性。push=true 时压撤销点
+## （SpinBox 由 focus_entered 统一压点，这里传 false 避免刷屏）。
+func _set_wire_property(index: int, prop_name: StringName, value: Variant, push := true) -> void:
+	var wires := _wire_layer.get_wires()
+	if index < 0 or index >= wires.size():
+		return
+	var link := wires[index]["link"] as ActionLink
+	if link == null:
+		return
+	if push:
+		_push_undo()
+	link.set(prop_name, value)
+	_update_status()
+
+
+## 电线动作摘要（Inspector 列表 / 曲线标签用）
+func _link_summary(link: ActionLink) -> String:
+	var parts := PackedStringArray()
+	parts.append("移(%d,%d)" % [int(link.move_offset.x), int(link.move_offset.y)])
+	if absf(link.rotate_degrees) > 0.01:
+		parts.append("转%d°" % int(link.rotate_degrees))
+	parts.append("%.1fs" % link.duration)
+	if link.repeat:
+		parts.append("循环")
+	if not link.restore_on_off:
+		parts.append("不恢复")
+	return " ".join(parts)
 
 
 func _add_prop_control(grid: GridContainer, prop: Dictionary) -> void:
@@ -1020,15 +1092,16 @@ func _wires_for_node(node: Node) -> Array[Dictionary]:
 	var wires := _wire_layer.get_wires()
 	for i in wires.size():
 		var wire: Dictionary = wires[i]
+		var summary := _link_summary(wire["link"] as ActionLink)
 		if wire["source"] == node:
 			result.append({
 				"index": i,
-				"text": "输出 → %s.%s" % [(wire["target"] as Node).name, wire["method"]],
+				"text": "输出 → %s（%s）" % [(wire["target"] as Node).name, summary],
 			})
 		elif wire["target"] == node:
 			result.append({
 				"index": i,
-				"text": "输入 ← %s.%s" % [(wire["source"] as Node).name, wire["signal"]],
+				"text": "输入 ← %s.%s（%s）" % [(wire["source"] as Node).name, wire["signal"], summary],
 			})
 	return result
 
@@ -1063,7 +1136,8 @@ func _update_status() -> void:
 	var file_name := _current_path.get_file() if not _current_path.is_empty() else "（未保存）"
 	var block_count := 0
 	if _level_root != null:
-		block_count = LevelFileIO.walk_instance_roots(_level_root).size()
+		# 电线节点（ActionLink）也是实例根，但它不是积木
+		block_count = LevelFileIO.walk_instance_roots(_level_root).size() - get_wire_count()
 	_status_label.text = "文件：%s%s ｜ 积木：%d ｜ 电线：%d ｜ 选中触发块后从右侧端口拖出电线 ｜ Ctrl+S 保存" % [
 		file_name, " ●" if _dirty else "", block_count, get_wire_count(),
 	]
@@ -1086,13 +1160,10 @@ func _source_signal_of(node: Node) -> StringName:
 
 
 func _is_valid_wire_target(node: Node, signal_name: StringName) -> bool:
-	if node.has_method(&"set_external_open") \
-			and LevelFileIO.is_valid_wire(signal_name, &"set_external_open"):
-		return true
-	if node.has_method(&"set_enabled") \
-			and LevelFileIO.is_valid_wire(signal_name, &"set_enabled"):
-		return true
-	return false
+	# 任意积木都可以当电线目标（机关/镜面/石块/蚕茧……），电线节点本身除外
+	return node != null and node is Node2D and not node is ActionLink \
+			and node.scene_file_path != "" \
+			and LevelFileIO.is_valid_wire(signal_name, ActionLink.METHOD_NAME)
 
 
 func _block_at_point(world_point: Vector2) -> Node2D:
@@ -1101,7 +1172,7 @@ func _block_at_point(world_point: Vector2) -> Node2D:
 	var blocks := LevelFileIO.walk_instance_roots(_level_root)
 	for i in range(blocks.size() - 1, -1, -1):
 		var node := blocks[i] as Node2D
-		if node == null:
+		if node == null or node is ActionLink:
 			continue
 		var size := PaletteData.entry_size(node.scene_file_path)
 		var local := (world_point - node.global_position).rotated(-node.rotation)
@@ -1142,10 +1213,27 @@ func _spawn_block_impl(
 	block.name = _unique_block_name(key.to_pascal_case())
 	block.position = world_position
 	_blocks_container().add_child(block)
-	block.position = world_position  # 抵消 _ready 的位置改写（移动底座贴 path_a）
+	# 进树后 _ready 可能改写属性（如传送门自动配对），位置再贴一次保证准确
+	block.position = world_position
 	for prop in preset:
 		block.set(prop, preset[prop])
 	return block
+
+
+## 生成电线节点（ActionLink）：挂在 Blocks 下，target_node 指向目标机关。
+## 先 add_child 再设 target_node——get_path_to 需要双方同树，_ready 已跑过所以补解析。
+func _spawn_link_for(target: Node2D) -> ActionLink:
+	var packed := load(ACTION_LINK_SCENE) as PackedScene
+	if packed == null:
+		return null
+	var link := packed.instantiate() as ActionLink
+	if link == null:
+		return null
+	link.name = _unique_block_name("Wire")
+	_blocks_container().add_child(link)
+	link.target_node = link.get_path_to(target)
+	link.resolve_target()
+	return link
 
 
 func _root_name_for_file(file_name: String) -> String:

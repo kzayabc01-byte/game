@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://dubyhee0dah46"]
+[gd_scene load_steps=10 format=3 uid="uid://dubyhee0dah46"]
 
 [ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
 [ext_resource type="PackedScene" uid="uid://cb3i4tjcexqy1" path="res://blocks/light_source/light_source.tscn" id="2_source"]
@@ -7,6 +7,8 @@
 [ext_resource type="PackedScene" uid="uid://bodh855d3ngah" path="res://blocks/cocoon/cocoon.tscn" id="5_cocoon"]
 [ext_resource type="PackedScene" uid="uid://besbvqa4lgcp5" path="res://blocks/light_door/light_door.tscn" id="6_door"]
 [ext_resource type="PackedScene" path="res://scenes/levels/level_02_折射入门.tscn" id="7_next"]
+[ext_resource type="PackedScene" path="res://blocks/trigger_switch/trigger_switch.tscn" id="8_trigger"]
+[ext_resource type="PackedScene" path="res://blocks/action_link/action_link.tscn" id="9_link"]
 
 [node name="Level01" instance=ExtResource("1_base")]
 
@@ -18,6 +20,10 @@ position = Vector2(320, 200)
 
 [node name="LightDoor" parent="Blocks" instance=ExtResource("6_door")]
 position = Vector2(320, 400)
+
+[node name="TriggerSwitch" parent="Blocks" instance=ExtResource("8_trigger")]
+position = Vector2(320, 400)
+latch = true
 
 [node name="BlockerWall" parent="Blocks" instance=ExtResource("3_wall")]
 position = Vector2(400, 400)
@@ -38,6 +44,12 @@ scale = Vector2(6, 1)
 position = Vector2(620, 400)
 scale = Vector2(1, 1.5)
 
+[node name="Wire" parent="Blocks" instance=ExtResource("9_link")]
+target_node = NodePath("../LightDoor")
+move_offset = Vector2(0, -60)
+
 [node name="LevelManager" parent="." index="3"]
 level_name = "示例关卡 · 两段式开门"
 next_level_scene = ExtResource("7_next")
+
+[connection signal="active_changed" from="Blocks/TriggerSwitch" to="Blocks/Wire" method="_on_signal"]

@@ -1,0 +1,38 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/portal/portal.tscn" id="2_portal"]
+[ext_resource type="PackedScene" path="res://blocks/wall/wall.tscn" id="3_wall"]
+[ext_resource type="PackedScene" path="res://blocks/cocoon/cocoon.tscn" id="4_cocoon"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="5_light_source"]
+[ext_resource type="PackedScene" path="res://blocks/light_door/light_door.tscn" id="6_light_door"]
+[ext_resource type="PackedScene" path="res://blocks/trigger_switch/trigger_switch.tscn" id="7_trigger"]
+[ext_resource type="PackedScene" path="res://blocks/action_link/action_link.tscn" id="8_link"]
+
+[node name="Level08" instance=ExtResource("1_base")]
+
+[node name="Camera2D" parent="." index="0"]
+enabled = false
+[node name="Portal" parent="Blocks" instance=ExtResource("2_portal")]
+position = Vector2(448, 224)
+linked_portal = NodePath("Blocks/Portal2")
+[node name="Portal2" parent="Blocks" instance=ExtResource("2_portal")]
+position = Vector2(608, 224)
+linked_portal = NodePath("Blocks/Portal")
+[node name="Wall" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(538, 210)
+scale = Vector2(0.4, 1)
+[node name="Cocoon" parent="Blocks" instance=ExtResource("4_cocoon")]
+position = Vector2(768, 224)
+[node name="LightSource" parent="Blocks" instance=ExtResource("5_light_source")]
+position = Vector2(288, 224)
+[node name="LightDoor" parent="Blocks" instance=ExtResource("6_light_door")]
+position = Vector2(352, 352)
+[node name="TriggerSwitch" parent="Blocks" instance=ExtResource("7_trigger")]
+position = Vector2(352, 352)
+latch = true
+[node name="Wire" parent="Blocks" instance=ExtResource("8_link")]
+target_node = NodePath("../LightDoor")
+move_offset = Vector2(0, -60)
+
+[connection signal="active_changed" from="Blocks/TriggerSwitch" to="Blocks/Wire" method="_on_signal"]

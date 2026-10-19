@@ -5,8 +5,8 @@ extends LightReceiver
 ## 触发机关：最简感光开关，给别的机关当"开关信号源"。
 ## - latch=false（默认）：光照着就激活，光离开就关闭（active_changed 跟随光照）
 ## - latch=true：照到一次就保持激活，按 R 重置才关闭
-## 用法：关卡里用编辑器信号面板把 active_changed 连给石门 set_external_open /
-## 移动底座 set_enabled 等入口。重置时本机关会重发当前状态，让连线机关恢复一致。
+## 用法：关卡里用编辑器把 active_changed 拖线连到电线（ActionLink）的 _on_signal，
+## 机关动作（移多少/转多少/时长/循环/恢复）在电线上配置。重置时重发当前状态，让电线恢复一致。
 
 signal active_changed(active: bool)
 

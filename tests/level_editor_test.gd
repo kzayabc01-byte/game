@@ -84,8 +84,9 @@ func _run() -> void:
 
 	# 6. 序列化内容
 	var text := _editor.serialize()
-	_check("序列化含正确连接行", text.contains(
-			"[connection signal=\"active_changed\" from=\"Blocks/TriggerSwitch\" to=\"Blocks/MovingBase\" method=\"set_enabled\"]"))
+	_check("序列化含正确电线连接行", text.contains(
+			"[connection signal=\"active_changed\" from=\"Blocks/TriggerSwitch\" to=\"Blocks/Wire\" method=\"_on_signal\"]"))
+	_check("序列化含电线节点目标", text.contains("target_node = NodePath(\"../MovingBase\")"))
 	_check("输出不含编辑器节点", not text.contains("WireLayer") and not text.contains("LevelEditor")
 			and not text.contains("Gizmo") and not text.contains("EditorCamera")
 			and not text.contains("RayRenderer"))
@@ -99,7 +100,11 @@ func _run() -> void:
 	var reloaded_trigger := reloaded.get_node("Blocks/TriggerSwitch")
 	_check("重载后连接表正确", reloaded_trigger != null
 			and reloaded_trigger.get_signal_connection_list(&"active_changed").size() == 1)
-	_check("重载后 4 块积木", LevelFileIO.walk_instance_roots(reloaded).size() == 4)
+	var reloaded_wire := reloaded.get_node_or_null("Blocks/Wire")
+	_check("重载后电线节点存在", reloaded_wire != null
+			and reloaded_wire is ActionLink
+			and (reloaded_wire as ActionLink).target_node == NodePath("../MovingBase"))
+	_check("重载后 4 块积木 + 1 条电线", LevelFileIO.walk_instance_roots(reloaded).size() == 5)
 	reloaded.free()
 
 	# 8. 删除

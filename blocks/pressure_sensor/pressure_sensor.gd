@@ -4,8 +4,8 @@ extends Area2D
 
 ## 压力传感器：有重物（heavy_objects 组的石块）压住时发出 pressed_changed 信号。
 ## 不是感光机关（不继承 LightReceiver，见开发指南"常见坑"）。
-## 用法：关卡里用编辑器信号面板把 pressed_changed 连给石门 set_external_open /
-## 移动底座 set_enabled 等入口。重置时重发当前状态，让连线机关恢复一致。
+## 用法：关卡里用编辑器把 pressed_changed 拖线连到电线（ActionLink）的 _on_signal，
+## 机关动作（移多少/转多少/时长/循环/恢复）在电线上配置。重置时重发当前状态，让电线恢复一致。
 ## 实现：每物理帧轮询重叠物体（重物瞬移/重置时 body_entered 可能漏发，轮询最可靠）。
 
 signal pressed_changed(pressed: bool)

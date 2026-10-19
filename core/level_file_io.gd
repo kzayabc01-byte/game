@@ -13,10 +13,10 @@ extends RefCounted
 const BASE_SCENE_DEFAULT := "res://scenes/levels/level_base.tscn"
 const LEVELS_DIR := "res://scenes/levels"
 
-## 电线兼容表：源信号 -> 允许连到的目标方法
+## 电线兼容表：源信号 -> 允许连到的目标方法（电线 = ActionLink 节点，入口统一 _on_signal）
 const WIRE_TABLE := {
-	&"active_changed": [&"set_external_open", &"set_enabled"],
-	&"pressed_changed": [&"set_external_open", &"set_enabled"],
+	&"active_changed": [&"_on_signal"],
+	&"pressed_changed": [&"_on_signal"],
 }
 
 const FLOAT_TOLERANCE := 1e-6
