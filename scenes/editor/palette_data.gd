@@ -1,8 +1,9 @@
 class_name PaletteData
 extends RefCounted
 
-## 积木面板静态目录：编辑器从这里的 14 个条目生成面板（中文标签、分类、场景路径）
+## 积木面板静态目录：编辑器从这里的 16 个条目生成面板（中文标签、分类、场景路径）
 ## 和 Inspector 的属性迷你面板（props 描述每个导出属性怎么编辑）。
+## preset 是可选的生成预设：调色板点生成时应用（变色片/颜色感应开关就是折射面与触发开关的预设）。
 ## 说明：人B 的颜色积木交付后在这里补条目即可，其余代码不用动。
 
 const CATEGORY_OPTICS := "光学"
@@ -33,6 +34,17 @@ static var _entries: Array[Dictionary] = [
 		"path": "res://blocks/refract_surface/refract_surface.tscn", "size": Vector2(96, 24), "props": [],
 	},
 	{
+		"key": "color_changer", "label": "变色片", "category": CATEGORY_OPTICS,
+		"path": "res://blocks/refract_surface/refract_surface.tscn", "size": Vector2(96, 24),
+		"props": [
+			{"name": &"recolor", "label": "改色", "kind": &"bool"},
+			{"name": &"output_color", "label": "输出颜色", "kind": &"color"},
+			{"name": &"bend_degrees", "label": "偏折角(°)", "kind": &"float"},
+			{"name": &"attenuation", "label": "衰减率", "kind": &"float"},
+		],
+		"preset": {"recolor": true, "output_color": Color(1.0, 0.25, 0.25)},
+	},
+	{
 		"key": "concave_lens", "label": "凹透镜", "category": CATEGORY_OPTICS,
 		"path": "res://blocks/concave_lens/concave_lens.tscn", "size": Vector2(24, 96),
 		"props": [
@@ -60,7 +72,19 @@ static var _entries: Array[Dictionary] = [
 		"path": "res://blocks/trigger_switch/trigger_switch.tscn", "size": Vector2(40, 40),
 		"props": [
 			{"name": &"latch", "label": "自锁", "kind": &"bool"},
+			{"name": &"match_color", "label": "颜色感应", "kind": &"bool"},
+			{"name": &"color_filter", "label": "感应颜色", "kind": &"color"},
 		],
+	},
+	{
+		"key": "color_trigger", "label": "颜色感应开关", "category": CATEGORY_MECHANISM,
+		"path": "res://blocks/trigger_switch/trigger_switch.tscn", "size": Vector2(40, 40),
+		"props": [
+			{"name": &"latch", "label": "自锁", "kind": &"bool"},
+			{"name": &"match_color", "label": "颜色感应", "kind": &"bool"},
+			{"name": &"color_filter", "label": "感应颜色", "kind": &"color"},
+		],
+		"preset": {"match_color": true, "color_filter": Color(1.0, 0.25, 0.25)},
 	},
 	{
 		"key": "pressure_sensor", "label": "压力传感器", "category": CATEGORY_MECHANISM,
@@ -121,6 +145,21 @@ static func find_entry(scene_path: String) -> Dictionary:
 		if entry["path"] == scene_path:
 			return entry
 	return {}
+
+
+## 同场景多个条目时（变色片=折射面、颜色感应开关=触发开关），
+## 用积木名（生成时以 key 命名）区分：名字匹配的条目优先。
+static func find_entry_for(scene_path: String, node_name: String = "") -> Dictionary:
+	var fallback: Dictionary = {}
+	for entry in _entries:
+		if entry["path"] != scene_path:
+			continue
+		if fallback.is_empty():
+			fallback = entry
+		var key: String = entry["key"]
+		if not node_name.is_empty() and node_name.begins_with(key.to_pascal_case()):
+			return entry
+	return fallback
 
 
 static func entry_label(scene_path: String) -> String:

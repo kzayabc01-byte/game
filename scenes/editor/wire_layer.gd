@@ -24,6 +24,9 @@ var _wires: Array[Dictionary] = []
 ## 高亮的目标积木（拖线中合法目标提示）
 var _highlight: Node2D = null
 
+## 选中信号源时提示其出线端口（编辑器 select 时设置；积木被删/换子树后自动失效）
+var _source_hint: Node2D = null
+
 ## 拖线中的橡皮线预览
 var preview_active := false
 var preview_from := Vector2.ZERO
@@ -45,7 +48,7 @@ func _process(_delta: float) -> void:
 				selected_index = -1
 			elif selected_index > i:
 				selected_index -= 1
-	if not _wires.is_empty() or preview_active or _highlight != null:
+	if not _wires.is_empty() or preview_active or _highlight != null or _source_hint != null:
 		queue_redraw()
 
 
@@ -56,6 +59,8 @@ func _draw() -> void:
 		_draw_preview()
 	if _highlight != null and is_instance_valid(_highlight):
 		draw_arc(_highlight.global_position, 44.0, 0.0, TAU, 40, Color(0.4, 1.0, 0.5, 0.8), 3.0)
+	if _source_hint != null and is_instance_valid(_source_hint):
+		_draw_source_hint()
 
 
 ## 建立一条电线：校验 WIRE_TABLE 兼容表 → 真实 connect → 建档画线。失败返回 false。
@@ -188,6 +193,14 @@ func set_highlight_target(node: Node2D) -> void:
 	queue_redraw()
 
 
+## 选中信号源时提示出线端口（null 取消提示）
+func set_source_hint(node: Node2D) -> void:
+	if _source_hint == node:
+		return
+	_source_hint = node
+	queue_redraw()
+
+
 # ---------- 内部实现 ----------
 
 
@@ -237,6 +250,16 @@ func _draw_wire(index: int) -> void:
 func _draw_port(center: Vector2, color: Color, selected: bool) -> void:
 	draw_circle(center, 6.0 if selected else 5.0, color.darkened(0.35))
 	draw_circle(center, 3.0, color)
+
+
+## 选中信号源时的端口提示：呼吸圈 + 说明文字（画在最上层）
+func _draw_source_hint() -> void:
+	var port := _port_position(_source_hint, true)
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.006)
+	draw_circle(port, 9.0 + pulse * 3.0, Color(1.0, 0.62, 0.2, 0.35))
+	draw_circle(port, 5.0, Color(1.0, 0.62, 0.2))
+	draw_string(ThemeDB.fallback_font, port + Vector2(14, -16), "拖这里连线",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.85, 0.5))
 
 
 func _draw_preview() -> void:

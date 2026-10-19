@@ -122,11 +122,14 @@ func save_as() -> void:
 
 
 ## 在画面位置生成一块积木（scene_path 见 PaletteData）。返回新节点，失败返回 null。
-func spawn_block(scene_path: String, world_position: Vector2, block_name: String = "") -> Node2D:
+func spawn_block(
+	scene_path: String, world_position: Vector2,
+	block_name: String = "", preset: Dictionary = {}, entry_key: String = "",
+) -> Node2D:
 	if _level_root == null:
 		return null
 	_push_undo()
-	var block := _spawn_block_impl(scene_path, world_position)
+	var block := _spawn_block_impl(scene_path, world_position, preset, entry_key)
 	if block == null:
 		return null
 	if block_name != "":
@@ -143,6 +146,7 @@ func select(node: Node2D) -> void:
 	_selection = node
 	_wire_layer.selected_index = -1
 	_gizmo.set_target(node)
+	_wire_layer.set_source_hint(node if node != null and _source_signal_of(node) != &"" else null)
 	_rebuild_inspector()
 
 
@@ -150,6 +154,7 @@ func clear_selection() -> void:
 	_selection = null
 	_wire_layer.selected_index = -1
 	_gizmo.set_target(null)
+	_wire_layer.set_source_hint(null)
 	_rebuild_inspector()
 
 
@@ -157,6 +162,7 @@ func clear_selection() -> void:
 func select_wire(index: int) -> void:
 	_selection = null
 	_gizmo.set_target(null)
+	_wire_layer.set_source_hint(null)
 	_wire_layer.selected_index = index
 	_rebuild_inspector()
 
@@ -718,8 +724,7 @@ func _build_palette() -> void:
 			var button := Button.new()
 			button.text = entry["label"]
 			button.custom_minimum_size = Vector2(64, 36)
-			var path: String = entry["path"]
-			button.pressed.connect(func() -> void: _on_palette_pressed(path))
+			button.pressed.connect(func() -> void: _on_palette_pressed(entry))
 			grid.add_child(button)
 
 
@@ -828,7 +833,7 @@ func _rebuild_inspector() -> void:
 		_build_wire_inspector()
 	elif _selection == null or not is_instance_valid(_selection):
 		var hint := Label.new()
-		hint.text = "未选中积木\n\n点击画面中的积木选中；\n点空白处取消；\n点击电线选中电线。"
+		hint.text = "未选中积木\n\n点击画面中的积木选中；\n点空白处取消；\n点击电线选中电线。\n\n选中触发开关/压力传感器后，\n从它右侧出现的 ○ 端口\n拖到机关上即可连线。"
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_inspector_content.add_child(hint)
@@ -837,9 +842,9 @@ func _rebuild_inspector() -> void:
 
 
 func _build_block_inspector() -> void:
-	var entry := PaletteData.find_entry(_selection.scene_file_path)
+	var entry := PaletteData.find_entry_for(_selection.scene_file_path, _selection.name)
 	var title := Label.new()
-	title.text = "◎ %s" % PaletteData.entry_label(_selection.scene_file_path)
+	title.text = "◎ %s" % entry.get("label", PaletteData.entry_label(_selection.scene_file_path))
 	title.add_theme_font_size_override("font_size", 18)
 	_inspector_content.add_child(title)
 
@@ -874,8 +879,16 @@ func _build_block_inspector() -> void:
 			_add_prop_control(props_grid, prop)
 
 	var wires := _wires_for_node(_selection)
-	if not wires.is_empty():
+	if _source_signal_of(_selection) != &"":
 		_inspector_content.add_child(_section_label("电线"))
+		var hint := Label.new()
+		hint.text = "从积木右侧的 ○ 端口\n按住拖到石门/移动底座上连线。\n点击电线可选中，Del 断开。"
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hint.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
+		_inspector_content.add_child(hint)
+	if not wires.is_empty():
+		if _source_signal_of(_selection) == &"":
+			_inspector_content.add_child(_section_label("电线"))
 		for pair in wires:
 			_inspector_content.add_child(_make_wire_row(pair["text"], pair["index"]))
 
@@ -1113,7 +1126,10 @@ func _unique_block_name(base_name: String) -> String:
 	return name
 
 
-func _spawn_block_impl(scene_path: String, world_position: Vector2) -> Node2D:
+func _spawn_block_impl(
+	scene_path: String, world_position: Vector2,
+	preset: Dictionary = {}, entry_key: String = "",
+) -> Node2D:
 	var packed := load(scene_path) as PackedScene
 	if packed == null:
 		return null
@@ -1121,11 +1137,14 @@ func _spawn_block_impl(scene_path: String, world_position: Vector2) -> Node2D:
 	if block == null:
 		return null
 	var entry := PaletteData.find_entry(scene_path)
-	var key: String = entry.get("key", scene_path.get_file().get_basename())
+	var key: String = entry_key if not entry_key.is_empty() \
+			else str(entry.get("key", scene_path.get_file().get_basename()))
 	block.name = _unique_block_name(key.to_pascal_case())
 	block.position = world_position
 	_blocks_container().add_child(block)
 	block.position = world_position  # 抵消 _ready 的位置改写（移动底座贴 path_a）
+	for prop in preset:
+		block.set(prop, preset[prop])
 	return block
 
 
@@ -1138,12 +1157,13 @@ func _root_name_for_file(file_name: String) -> String:
 # UI 事件转发
 # ============================================================
 
-func _on_palette_pressed(scene_path: String) -> void:
+func _on_palette_pressed(entry: Dictionary) -> void:
 	if _level_root == null:
 		return
 	# 画面中心附近随机偏移，避免每次生成叠在一起
 	var offset := Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0)) * GRID_SIZE
-	spawn_block(scene_path, VIEW_RECT.get_center() + offset)
+	var preset: Dictionary = entry.get("preset", {})
+	spawn_block(entry["path"], VIEW_RECT.get_center() + offset, "", preset, str(entry["key"]))
 
 
 func _on_open_file_selected(path: String) -> void:

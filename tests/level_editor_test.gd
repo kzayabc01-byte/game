@@ -7,6 +7,7 @@ extends Node
 const WALL_SCENE := "res://blocks/wall/wall.tscn"
 const SWITCH_SCENE := "res://blocks/trigger_switch/trigger_switch.tscn"
 const MOVING_SCENE := "res://blocks/moving_base/moving_base.tscn"
+const REFRACT_SCENE := "res://blocks/refract_surface/refract_surface.tscn"
 
 var _failures: Array[String] = []
 var _editor: LevelEditor = null
@@ -116,6 +117,20 @@ func _run() -> void:
 	_check("复制后 Blocks 下有两块墙体", blocks.has_node("Wall") and blocks.has_node("Wall2"))
 	var copy := blocks.get_node("Wall2") as Node2D
 	_check("复制体偏移 32px", copy != null and copy.position == Vector2(132, 132))
+
+	# 10. 颜色积木预设（变色片 = 折射面改色预设；颜色感应开关 = 触发开关颜色感应预设）
+	var changer := _editor.spawn_block(
+			REFRACT_SCENE, Vector2(500, 500), "", {"recolor": true}, "color_changer")
+	_check("变色片预设生效", changer != null and changer.recolor and changer.name == "ColorChanger")
+	var color_entry := PaletteData.find_entry_for(REFRACT_SCENE, "ColorChanger")
+	_check("预设条目按名字区分", color_entry.get("key", "") == "color_changer")
+	var plain_entry := PaletteData.find_entry_for(REFRACT_SCENE, "RefractSurface")
+	_check("普通折射面不受预设影响", plain_entry.get("key", "") == "refract_surface")
+	var color_trigger := _editor.spawn_block(
+			SWITCH_SCENE, Vector2(600, 500), "",
+			{"match_color": true, "color_filter": Color(1.0, 0.25, 0.25)}, "color_trigger")
+	_check("颜色感应预设生效", color_trigger != null and color_trigger.match_color)
+	_check("感应开关命名 ColorTrigger", color_trigger != null and color_trigger.name == "ColorTrigger")
 
 	_finish()
 
