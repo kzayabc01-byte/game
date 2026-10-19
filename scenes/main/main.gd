@@ -8,6 +8,7 @@ extends Control
 ##   * 顺序：按文件名排序，约定 level_NN_说明.tscn（NN 两位数）
 ##   * 显示名：优先读关卡里 LevelManager.level_name；没填就按文件名兜底
 ##   * level_base.tscn 这类模板不会被当成关卡（前缀后必须是数字）
+##   * debug 构建每个关卡按钮旁有 × 删除按钮：确认后连关卡文件一起删（正式导出不显示）
 
 const LEVEL_DIR := "res://scenes/levels"
 const LEVEL_PREFIX := "level_"
@@ -64,12 +65,25 @@ func _create_level_buttons() -> void:
 		_level_list.add_child(empty)
 		return
 
+	# debug 构建给每个关卡配一个 × 删除按钮；正式导出看不到
+	var show_delete := OS.is_debug_build()
 	for index in _levels.size():
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
 		var button := Button.new()
 		button.text = "%d · %s" % [index + 1, _level_title(_levels[index])]
-		button.custom_minimum_size = Vector2(320.0, 48.0)
+		button.custom_minimum_size = Vector2(264.0 if show_delete else 320.0, 48.0)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_on_level_pressed.bind(index))
-		_level_list.add_child(button)
+		row.add_child(button)
+		if show_delete:
+			var delete_button := Button.new()
+			delete_button.text = "×"
+			delete_button.custom_minimum_size = Vector2(48.0, 48.0)
+			delete_button.tooltip_text = "删除这个关卡（关卡文件一并删除）"
+			delete_button.pressed.connect(_confirm_delete_level.bind(index))
+			row.add_child(delete_button)
+		_level_list.add_child(row)
 
 	# 关卡编辑器入口：只出现在 debug 构建（玩家正式版看不到）
 	if OS.is_debug_build():
@@ -120,6 +134,46 @@ func _title_from_file(path: String) -> String:
 
 func _on_level_pressed(index: int) -> void:
 	get_tree().change_scene_to_file(_levels[index])
+
+
+## 弹确认框：删除会连 scenes/levels/ 里的关卡文件一起删掉
+func _confirm_delete_level(index: int) -> void:
+	var path := _levels[index]
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "删除关卡"
+	dialog.dialog_text = "确定删除「%s」？\n文件 %s 会从 scenes/levels/ 永久删除，无法撤销。" % [
+			_level_title(path), path.get_file()]
+	dialog.ok_button_text = "删除"
+	dialog.get_ok_button().add_theme_color_override("font_color", Color(0.92, 0.35, 0.3))
+	dialog.confirmed.connect(_delete_level.bind(index, dialog))
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered()
+
+
+## 确认后真正删文件并刷新列表
+func _delete_level(index: int, dialog: ConfirmationDialog) -> void:
+	var path := _levels[index]
+	if _delete_level_file(path):
+		_status_label.text = "已删除关卡：%s" % path.get_file()
+	else:
+		_status_label.text = "删除失败：%s" % path.get_file()
+	dialog.queue_free()
+	_refresh_level_list()
+
+
+## 删除关卡文件本身（返回是否成功）；测试也直接调这个
+func _delete_level_file(path: String) -> bool:
+	if not FileAccess.file_exists(path):
+		return false
+	return DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) == OK
+
+
+func _refresh_level_list() -> void:
+	for child in _level_list.get_children():
+		child.free()
+	_levels = _discover_levels()
+	_create_level_buttons()
 
 
 func _on_quit_pressed() -> void:
