@@ -71,6 +71,15 @@ func _create_level_buttons() -> void:
 		button.pressed.connect(_on_level_pressed.bind(index))
 		_level_list.add_child(button)
 
+	# 关卡编辑器入口：只出现在 debug 构建（玩家正式版看不到）
+	if OS.is_debug_build():
+		var editor_button := Button.new()
+		editor_button.text = "关卡编辑器（仅 debug 构建）"
+		editor_button.custom_minimum_size = Vector2(320.0, 48.0)
+		editor_button.pressed.connect(func() -> void:
+			get_tree().change_scene_to_file("res://scenes/editor/level_editor.tscn"))
+		_level_list.add_child(editor_button)
+
 
 ## 关卡显示名：优先读关卡里 LevelManager 的 level_name，没填就按文件名兜底
 func _level_title(path: String) -> String:

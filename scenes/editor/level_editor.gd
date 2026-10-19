@@ -1,0 +1,1175 @@
+class_name LevelEditor
+extends Control
+
+## 游戏内关卡编辑器（v1）：拖放 / 缩放 / 旋转积木，用「电线」连接触发机关与机关，
+## 保存为标准 level_NN.tscn，与现有关卡管线完全兼容。
+##
+## 核心保证：
+##   * 电线 = 关卡节点上的真实信号连接；视觉层（WireLayer）只属于编辑器场景，
+##     保存时只写 [connection] 条目 → 游戏里天然没有电线
+##   * 六步加载管线：捕获干净属性 → 中和（process DISABLED + 关相机）→ 进树 →
+##     编辑器相机 → deferred 清理（LevelManager UI / 蚕茧连接）→ 回写属性
+##   * 撤销/重做 = 序列化快照 → user:// 临时文件重载换子树（50 步）
+##   * 相机固定 1152×648 = 游戏画面本身，所见即所得
+##
+## 快捷键：箭头 微移（Shift=32px）· Q/E 旋转 ±15°（Shift=1°）· Del 删除
+##          Ctrl+D 复制 · Ctrl+Z/Y 撤销重做 · Ctrl+S/O/N · Esc 取消选中/返回主菜单
+
+const LEVELS_DIR := "res://scenes/levels"
+const BASE_SCENE := "res://scenes/levels/level_base.tscn"
+const MENU_SCENE := "res://scenes/main/main.tscn"
+const UNDO_LIMIT := 50
+const GRID_SIZE := 32.0
+const VIEW_RECT := Rect2(0, 0, 1152, 648)
+const UNDO_SWAP_PATH := "user://editor_undo_swap.tscn"
+
+@onready var _ray_renderer: LightRayRenderer = $World/RayRenderer
+@onready var _wire_layer: WireLayer = $World/WireLayer
+@onready var _level_holder: Node2D = $World/LevelRoot
+@onready var _gizmo: SelectionGizmo = $World/Gizmo
+@onready var _editor_camera: Camera2D = $EditorCamera
+@onready var _ui: CanvasLayer = $UI
+
+# ---------- 关卡状态 ----------
+var _level_root: Node = null
+var _level_base_path := BASE_SCENE
+var _current_path := ""
+var _selection: Node2D = null
+var _dirty := false
+var _undo_stack: Array[Dictionary] = []
+var _redo_stack: Array[Dictionary] = []
+
+# ---------- 电线拖拽状态 ----------
+var _wire_dragging := false
+var _wire_drag_source: Node2D = null
+var _wire_drag_signal := &""
+
+# ---------- 键盘连按合并 ----------
+var _nudge_undo_open := false
+var _nudge_timeout := 0.0
+
+var _show_ray_preview := true
+var _play_after_save := false
+
+# ---------- UI 引用（代码构建） ----------
+var _inspector_content: VBoxContainer = null
+var _status_label: Label = null
+var _save_dialog: ConfirmationDialog = null
+var _save_name_edit: LineEdit = null
+var _save_title_edit: LineEdit = null
+var _next_level_option: OptionButton = null
+var _open_dialog: FileDialog = null
+var _confirm_dialog: ConfirmationDialog = null
+var _confirm_callback: Callable = Callable()
+# Inspector 变换控件（变换提交后刷新值用）
+var _spin_x: SpinBox = null
+var _spin_y: SpinBox = null
+var _spin_rotation: SpinBox = null
+var _spin_scale_x: SpinBox = null
+var _spin_scale_y: SpinBox = null
+
+
+func _ready() -> void:
+	_editor_camera.make_current()
+	_gizmo.view_rect = VIEW_RECT
+	_gizmo.transform_started.connect(_on_gizmo_transform_started)
+	_gizmo.transform_committed.connect(_on_gizmo_transform_committed)
+	_build_ui()
+	new_level()
+
+
+# ============================================================
+# 程序化 API（UI 与测试共用）
+# ============================================================
+
+## 新建空白关卡（有未保存改动时弹确认框）
+func new_level() -> void:
+	if not _dirty:
+		_do_new_level()
+		return
+	_show_confirm("新建关卡会丢弃未保存的改动，继续吗？", _do_new_level)
+
+
+## 打开关卡文件（有未保存改动时弹确认框，确认后才真的打开）
+func open_level(path: String) -> bool:
+	var packed := load(path) as PackedScene
+	if packed == null:
+		return false
+	if _dirty:
+		_show_confirm("打开会丢弃未保存的改动，继续吗？", func() -> void: _do_open(path, packed))
+		return true
+	_do_open(path, packed)
+	return true
+
+
+## 保存到当前路径；新关卡弹另存为对话框
+func save() -> bool:
+	if _current_path.is_empty():
+		save_as()
+		return false
+	return _write_current()
+
+
+## 弹出另存为对话框（文件名 / 关卡名 / 下一关）
+func save_as() -> void:
+	if _level_root == null:
+		return
+	_save_name_edit.text = LevelFileIO.suggest_file_name()
+	var manager := _level_root.get_node_or_null("LevelManager")
+	_save_title_edit.text = str(manager.get("level_name")) if manager != null else ""
+	_next_level_option.select(0)
+	_save_dialog.popup_centered()
+
+
+## 在画面位置生成一块积木（scene_path 见 PaletteData）。返回新节点，失败返回 null。
+func spawn_block(scene_path: String, world_position: Vector2, block_name: String = "") -> Node2D:
+	if _level_root == null:
+		return null
+	_push_undo()
+	var block := _spawn_block_impl(scene_path, world_position)
+	if block == null:
+		return null
+	if block_name != "":
+		block.name = block_name
+	select(block)
+	_update_status()
+	return block
+
+
+## 选中一个积木（null 取消选中）
+func select(node: Node2D) -> void:
+	if _selection == node:
+		return
+	_selection = node
+	_wire_layer.selected_index = -1
+	_gizmo.set_target(node)
+	_rebuild_inspector()
+
+
+func clear_selection() -> void:
+	_selection = null
+	_wire_layer.selected_index = -1
+	_gizmo.set_target(null)
+	_rebuild_inspector()
+
+
+## 选中一条电线（Del 断开）
+func select_wire(index: int) -> void:
+	_selection = null
+	_gizmo.set_target(null)
+	_wire_layer.selected_index = index
+	_rebuild_inspector()
+
+
+func delete_selected() -> void:
+	if _selection == null:
+		return
+	_push_undo()
+	var node := _selection
+	clear_selection()
+	_wire_layer.remove_wires_touching(node)
+	node.free()
+	_update_status()
+
+
+func duplicate_selected() -> void:
+	if _selection == null or _selection.scene_file_path.is_empty():
+		return
+	var source := _selection
+	_push_undo()
+	var copy := _spawn_block_impl(source.scene_file_path, Vector2.ZERO)
+	LevelFileIO.copy_props(source, copy, true)
+	copy.position = source.position + Vector2(GRID_SIZE, GRID_SIZE)
+	select(copy)
+	_update_status()
+
+
+func nudge_selected(delta: Vector2, push_undo := true) -> void:
+	if _selection == null:
+		return
+	if push_undo:
+		_push_undo()
+	_selection.position += delta
+	_refresh_inspector_transform()
+	_update_status()
+
+
+func rotate_selected(degrees: float, push_undo := true) -> void:
+	if _selection == null:
+		return
+	if push_undo:
+		_push_undo()
+	_selection.rotation += deg_to_rad(degrees)
+	_refresh_inspector_transform()
+	_update_status()
+
+
+func scale_selected(factor: Vector2, push_undo := true) -> void:
+	if _selection == null:
+		return
+	if push_undo:
+		_push_undo()
+	_selection.scale = Vector2(
+		maxf(_selection.scale.x * factor.x, SelectionGizmo.MIN_SCALE),
+		maxf(_selection.scale.y * factor.y, SelectionGizmo.MIN_SCALE)
+	)
+	_refresh_inspector_transform()
+	_update_status()
+
+
+## 改选中块的属性（Inspector 控件内部传 push_undo=false，自己管撤销点）
+func set_selected_property(prop_name: StringName, value: Variant, push_undo := true) -> void:
+	if _selection == null:
+		return
+	if push_undo:
+		_push_undo()
+	_selection.set(prop_name, value)
+	_update_status()
+
+
+## 连接一条电线：signal/method 留空自动推断（触发开关 active_changed / 压力传感器
+## pressed_changed；目标有 set_external_open 优先，否则 set_enabled）
+func connect_wire(
+	source: Node2D, target: Node2D,
+	signal_name: StringName = &"", method_name: StringName = &"",
+) -> bool:
+	if source == null or target == null or source == target:
+		return false
+	if signal_name == &"":
+		signal_name = _source_signal_of(source)
+	if method_name == &"":
+		if target.has_method(&"set_external_open") \
+				and LevelFileIO.is_valid_wire(signal_name, &"set_external_open"):
+			method_name = &"set_external_open"
+		elif target.has_method(&"set_enabled") \
+				and LevelFileIO.is_valid_wire(signal_name, &"set_enabled"):
+			method_name = &"set_enabled"
+		else:
+			return false
+	_push_undo()
+	var ok := _wire_layer.add_wire(source, target, signal_name, method_name)
+	if ok:
+		_rebuild_inspector()
+		_update_status()
+	return ok
+
+
+func undo() -> bool:
+	if _undo_stack.is_empty():
+		return false
+	_redo_stack.append(_capture_state())
+	var previous: Dictionary = _undo_stack.pop_back()
+	_restore_state(previous)
+	_dirty = true
+	_update_status()
+	return true
+
+
+func redo() -> bool:
+	if _redo_stack.is_empty():
+		return false
+	_undo_stack.append(_capture_state())
+	var next: Dictionary = _redo_stack.pop_back()
+	_restore_state(next)
+	_dirty = true
+	_update_status()
+	return true
+
+
+## 当前关卡树的序列化文本（保存与快照共用）
+func serialize() -> String:
+	if _level_root == null:
+		return ""
+	return LevelFileIO.serialize_level(_level_root, _level_base_path)
+
+
+func get_level_root() -> Node:
+	return _level_root
+
+
+func get_wire_count() -> int:
+	return _wire_layer.get_wire_count()
+
+
+# ============================================================
+# 生命周期
+# ============================================================
+
+func _process(delta: float) -> void:
+	if _nudge_undo_open:
+		_nudge_timeout -= delta
+		if _nudge_timeout <= 0.0:
+			_nudge_undo_open = false
+	if _level_root == null or not _show_ray_preview:
+		return
+	_refresh_ray_preview()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _level_root == null:
+		return
+	if event is InputEventKey and event.pressed:
+		if _handle_key(event):
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_press_world(event.position)
+		else:
+			_release_world(event.position)
+	elif event is InputEventMouseMotion:
+		_handle_mouse_motion(event.position)
+
+
+# ============================================================
+# 键盘
+# ============================================================
+
+func _handle_key(event: InputEventKey) -> bool:
+	if event.keycode == KEY_ESCAPE:
+		_escape_pressed()
+		return true
+	# 焦点守卫：属性面板等控件持焦点时，其余快捷键全部让位
+	if _ui_has_focus():
+		return false
+	match event.keycode:
+		KEY_LEFT:
+			_nudge_key(Vector2.LEFT, event.shift_pressed)
+		KEY_RIGHT:
+			_nudge_key(Vector2.RIGHT, event.shift_pressed)
+		KEY_UP:
+			_nudge_key(Vector2.UP, event.shift_pressed)
+		KEY_DOWN:
+			_nudge_key(Vector2.DOWN, event.shift_pressed)
+		KEY_Q:
+			_rotate_key(-1.0, event.shift_pressed)
+		KEY_E:
+			_rotate_key(1.0, event.shift_pressed)
+		KEY_DELETE:
+			_delete_pressed()
+		KEY_D:
+			if event.ctrl_pressed:
+				duplicate_selected()
+		KEY_Z:
+			if event.ctrl_pressed:
+				if event.shift_pressed:
+					redo()
+				else:
+					undo()
+		KEY_Y:
+			if event.ctrl_pressed:
+				redo()
+		KEY_S:
+			if event.ctrl_pressed:
+				save()
+		KEY_O:
+			if event.ctrl_pressed:
+				_open_dialog.popup_centered()
+		KEY_N:
+			if event.ctrl_pressed:
+				new_level()
+		_:
+			return false
+	return true
+
+
+## 按住不放会来一串 echo：合并成一次撤销操作
+func _nudge_key(direction: Vector2, large: bool) -> void:
+	if _selection == null:
+		return
+	if not _nudge_undo_open:
+		_push_undo()
+		_nudge_undo_open = true
+	_nudge_timeout = 0.8
+	nudge_selected(direction * (GRID_SIZE if large else 1.0), false)
+
+
+func _rotate_key(sign: float, fine: bool) -> void:
+	if _selection == null:
+		return
+	if not _nudge_undo_open:
+		_push_undo()
+		_nudge_undo_open = true
+	_nudge_timeout = 0.8
+	rotate_selected(sign * (1.0 if fine else 15.0), false)
+
+
+func _delete_pressed() -> void:
+	if _wire_layer.selected_index >= 0:
+		_on_wire_delete_pressed(_wire_layer.selected_index)
+	elif _selection != null:
+		delete_selected()
+
+
+func _escape_pressed() -> void:
+	if _wire_dragging:
+		_cancel_wire_drag()
+		return
+	if _wire_layer.selected_index >= 0:
+		_wire_layer.selected_index = -1
+		_rebuild_inspector()
+		return
+	if _selection != null:
+		clear_selection()
+		return
+	if _dirty:
+		_show_confirm("返回主菜单？未保存的改动会丢失。", _go_to_menu)
+	else:
+		_go_to_menu()
+
+
+# ============================================================
+# 鼠标
+# ============================================================
+
+func _press_world(screen_pos: Vector2) -> void:
+	var world_point := _to_world(screen_pos)
+	# 点击画面释放 UI 焦点，让快捷键回到编辑器
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus != null:
+		focus.release_focus()
+	# 1) 选中块是触发源且点在端口上 → 开始拖电线
+	if _selection != null and _source_signal_of(_selection) != &"":
+		var port := WireLayer.port_position(_selection, true)
+		if world_point.distance_to(port) <= 12.0:
+			_wire_dragging = true
+			_wire_drag_source = _selection
+			_wire_drag_signal = _source_signal_of(_selection)
+			_wire_layer.set_preview(true, port, world_point)
+			return
+	# 2) 变换手柄
+	if _selection != null:
+		var mode := _gizmo.hit_test(world_point)
+		if mode != SelectionGizmo.DragMode.NONE:
+			_gizmo.begin_drag(mode, world_point)
+			return
+	# 3) 拾取积木（后画的在上层，从后往前找）
+	var block := _block_at_point(world_point)
+	if block != null:
+		select(block)
+		return
+	# 4) 电线
+	var wire_index := _wire_layer.hit_test(world_point)
+	if wire_index >= 0:
+		select_wire(wire_index)
+		return
+	# 5) 空白处
+	clear_selection()
+
+
+func _release_world(screen_pos: Vector2) -> void:
+	var world_point := _to_world(screen_pos)
+	if _wire_dragging:
+		_wire_dragging = false
+		_wire_layer.set_preview(false)
+		_wire_layer.set_highlight_target(null)
+		var target := _block_at_point(world_point)
+		if target != null and target != _wire_drag_source:
+			connect_wire(_wire_drag_source, target, _wire_drag_signal)
+		return
+	if _gizmo.is_dragging():
+		_gizmo.end_drag()
+
+
+func _handle_mouse_motion(screen_pos: Vector2) -> void:
+	var world_point := _to_world(screen_pos)
+	if _wire_dragging:
+		_wire_layer.set_preview(true, WireLayer.port_position(_wire_drag_source, true), world_point)
+		var target := _block_at_point(world_point)
+		if target != null and target != _wire_drag_source \
+				and _is_valid_wire_target(target, _wire_drag_signal):
+			_wire_layer.set_highlight_target(target)
+		else:
+			_wire_layer.set_highlight_target(null)
+	elif _gizmo.is_dragging():
+		_gizmo.update_drag(world_point)
+
+
+func _cancel_wire_drag() -> void:
+	_wire_dragging = false
+	_wire_layer.set_preview(false)
+	_wire_layer.set_highlight_target(null)
+
+
+# ============================================================
+# 关卡挂载（六步管线）
+# ============================================================
+
+## 把一棵关卡实例挂进编辑器：中和 → 进树 → 回写干净属性 → 重建电线
+func _mount_level(instance: Node) -> void:
+	var clean_props := LevelFileIO.capture_props(instance)
+	# 中和：整个关卡子树停摆（光线系统/机关/输入全部禁用，_ready 仍会跑）
+	instance.process_mode = Node.PROCESS_MODE_DISABLED
+	# 关卡自带的相机在进树前关掉，避免夺走编辑器相机的 current
+	var level_camera := instance.get_node_or_null("Camera2D") as Camera2D
+	if level_camera != null:
+		level_camera.enabled = false
+	var previous := _level_root
+	_level_holder.add_child(instance)
+	# 回写干净属性表，抵消 _ready 副作用（移动底座贴 path_a、传送门自动配对）
+	LevelFileIO.restore_props(instance, clean_props)
+	_level_root = instance
+	clear_selection()
+	_editor_camera.make_current()
+	_wire_layer.clear()
+	_wire_layer.rebuild_from_level(instance)
+	_cleanup_level.call_deferred(instance)
+	if previous != null:
+		previous.free()
+	_update_status()
+
+
+## deferred：释放游戏内 UI（胜利标签/提示条），断开蚕茧→胜利流程的连接
+func _cleanup_level(instance: Node) -> void:
+	var manager := instance.get_node_or_null("LevelManager")
+	if manager == null:
+		return
+	for child in manager.get_children():
+		if child is CanvasLayer:
+			child.free()
+	for node in get_tree().get_nodes_in_group(Cocoon.COCOON_GROUP):
+		var cocoon := node as Cocoon
+		var callback := Callable(manager, "_on_cocoon_activated")
+		if cocoon != null and cocoon.activated.is_connected(callback):
+			cocoon.activated.disconnect(callback)
+
+
+func _do_new_level() -> void:
+	_undo_stack.clear()
+	_redo_stack.clear()
+	var instance := (load(BASE_SCENE) as PackedScene).instantiate()
+	_level_base_path = BASE_SCENE
+	_mount_level(instance)
+	_current_path = ""
+	_dirty = false
+	_update_status()
+
+
+func _do_open(path: String, packed: PackedScene) -> void:
+	_undo_stack.clear()
+	_redo_stack.clear()
+	_level_base_path = LevelFileIO.get_base_scene_path_from_file(path)
+	_mount_level(packed.instantiate())
+	_current_path = path
+	_dirty = false
+	_update_status()
+
+
+# ============================================================
+# 撤销 / 重做
+# ============================================================
+
+func _capture_state() -> Dictionary:
+	return {"text": serialize(), "base": _level_base_path}
+
+
+func _push_undo() -> void:
+	if _level_root == null:
+		return
+	_undo_stack.append(_capture_state())
+	if _undo_stack.size() > UNDO_LIMIT:
+		_undo_stack.pop_front()
+	_redo_stack.clear()
+	_dirty = true
+
+
+func _restore_state(state: Dictionary) -> void:
+	LevelFileIO.write_text(UNDO_SWAP_PATH, state["text"])
+	# 同一路径会被资源缓存，必须忽略缓存强制重读
+	var packed := ResourceLoader.load(UNDO_SWAP_PATH, "", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	if packed == null:
+		push_error("撤销快照载入失败")
+		return
+	_level_base_path = state["base"]
+	_mount_level(packed.instantiate())
+
+
+# ============================================================
+# 保存 / 试玩
+# ============================================================
+
+func _write_current() -> bool:
+	if LevelFileIO.write_text(_current_path, serialize()) != OK:
+		_status_label.text = "保存失败：无法写入 %s" % _current_path
+		return false
+	_dirty = false
+	_update_status()
+	return true
+
+
+func _on_save_dialog_confirmed() -> void:
+	var file_name := _save_name_edit.text.strip_edges()
+	if not LevelFileIO.validate_file_name(file_name):
+		_status_label.text = "文件名不合法：应为 level_NN.tscn 或 level_NN_说明.tscn"
+		return
+	var manager := _level_root.get_node_or_null("LevelManager")
+	if manager != null:
+		var title := _save_title_edit.text.strip_edges()
+		if not title.is_empty():
+			manager.level_name = title
+		if _next_level_option.selected > 0:
+			manager.next_level_scene = load(LEVELS_DIR + "/"
+					+ _next_level_option.get_item_text(_next_level_option.selected))
+	# 根名随文件编号（Level06 风格）
+	_level_root.name = _root_name_for_file(file_name)
+	_current_path = LEVELS_DIR + "/" + file_name
+	_write_current()
+	if _play_after_save:
+		_play_after_save = false
+		_do_play()
+
+
+func _do_play() -> void:
+	if not _write_current():
+		return
+	get_tree().change_scene_to_file(_current_path)
+
+
+# ============================================================
+# 光线预览
+# ============================================================
+
+func _refresh_ray_preview() -> void:
+	var space := get_viewport().find_world_2d().direct_space_state
+	var segment_sets: Array[PackedVector2Array] = []
+	var segment_colors: Array[Array] = []
+	for node in get_tree().get_nodes_in_group(LightSource.SOURCE_GROUP):
+		var source := node as LightSource
+		if source == null or not is_instance_valid(source):
+			continue
+		for trace in RayCaster.trace_all(
+			space, source.global_position, source.get_light_direction(),
+			source.get_light_color(), source.max_bounces
+		):
+			segment_sets.append(trace.segments)
+			segment_colors.append(trace.segment_colors)
+	_ray_renderer.set_segments(segment_sets, segment_colors)
+
+
+# ============================================================
+# UI 构建
+# ============================================================
+
+func _build_ui() -> void:
+	_build_toolbar()
+	_build_palette()
+	_build_inspector()
+	_build_status_bar()
+	_build_save_dialog()
+	_build_open_dialog()
+	_build_confirm_dialog()
+
+
+func _build_toolbar() -> void:
+	var bar := PanelContainer.new()
+	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	bar.offset_bottom = 44.0
+	_ui.add_child(bar)
+	var box := HBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	bar.add_child(box)
+	box.add_child(_make_button("新建", func() -> void: new_level()))
+	box.add_child(_make_button("打开", func() -> void: _open_dialog.popup_centered()))
+	box.add_child(_make_button("保存", func() -> void: save()))
+	box.add_child(_make_button("另存为", func() -> void: save_as()))
+	box.add_child(_make_button("试玩", _on_play_pressed))
+	box.add_child(VSeparator.new())
+	var grid_toggle := CheckButton.new()
+	grid_toggle.text = "网格吸附"
+	grid_toggle.button_pressed = _gizmo.grid_snap_enabled
+	grid_toggle.toggled.connect(func(on: bool) -> void: _gizmo.grid_snap_enabled = on)
+	box.add_child(grid_toggle)
+	var angle_toggle := CheckButton.new()
+	angle_toggle.text = "角度吸附"
+	angle_toggle.button_pressed = _gizmo.angle_snap_enabled
+	angle_toggle.toggled.connect(func(on: bool) -> void: _gizmo.angle_snap_enabled = on)
+	box.add_child(angle_toggle)
+	var ray_toggle := CheckButton.new()
+	ray_toggle.text = "光线预览"
+	ray_toggle.button_pressed = _show_ray_preview
+	ray_toggle.toggled.connect(func(on: bool) -> void:
+		_show_ray_preview = on
+		if not on:
+			_ray_renderer.set_segments([], []))
+	box.add_child(ray_toggle)
+
+
+func _build_palette() -> void:
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	panel.offset_right = 240.0
+	panel.offset_top = 48.0
+	panel.offset_bottom = -32.0
+	_ui.add_child(panel)
+	var scroll := ScrollContainer.new()
+	panel.add_child(scroll)
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(content)
+	for category in PaletteData.CATEGORIES:
+		var title := Label.new()
+		title.text = "■ %s" % category
+		title.add_theme_font_size_override("font_size", 16)
+		content.add_child(title)
+		var grid := GridContainer.new()
+		grid.columns = 3
+		content.add_child(grid)
+		for entry in PaletteData.entries_in_category(category):
+			var button := Button.new()
+			button.text = entry["label"]
+			button.custom_minimum_size = Vector2(64, 36)
+			var path: String = entry["path"]
+			button.pressed.connect(func() -> void: _on_palette_pressed(path))
+			grid.add_child(button)
+
+
+func _build_inspector() -> void:
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	panel.offset_left = -260.0
+	panel.offset_top = 48.0
+	panel.offset_bottom = -32.0
+	_ui.add_child(panel)
+	var scroll := ScrollContainer.new()
+	panel.add_child(scroll)
+	_inspector_content = VBoxContainer.new()
+	_inspector_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_inspector_content)
+	_rebuild_inspector()
+
+
+func _build_status_bar() -> void:
+	var bar := PanelContainer.new()
+	bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	bar.offset_top = -28.0
+	_ui.add_child(bar)
+	_status_label = Label.new()
+	_status_label.add_theme_font_size_override("font_size", 13)
+	bar.add_child(_status_label)
+	_update_status()
+
+
+func _build_save_dialog() -> void:
+	_save_dialog = ConfirmationDialog.new()
+	_save_dialog.title = "保存关卡"
+	_save_dialog.initial_position = Window.WINDOW_INITIAL_POSITION_CENTER_MAIN_WINDOW_SCREEN
+	_ui.add_child(_save_dialog)
+	var content := VBoxContainer.new()
+	content.custom_minimum_size = Vector2(380, 0)
+	_save_dialog.add_child(content)
+	var name_label := Label.new()
+	name_label.text = "文件名（level_NN_说明.tscn）"
+	content.add_child(name_label)
+	_save_name_edit = LineEdit.new()
+	content.add_child(_save_name_edit)
+	var title_label := Label.new()
+	title_label.text = "关卡名（显示在主菜单）"
+	content.add_child(title_label)
+	_save_title_edit = LineEdit.new()
+	content.add_child(_save_title_edit)
+	var next_label := Label.new()
+	next_label.text = "通关后进入"
+	content.add_child(next_label)
+	_next_level_option = OptionButton.new()
+	_next_level_option.add_item("（无）")
+	for entry in LevelFileIO.scan_levels():
+		_next_level_option.add_item(entry)
+	content.add_child(_next_level_option)
+	_save_dialog.confirmed.connect(_on_save_dialog_confirmed)
+
+
+func _build_open_dialog() -> void:
+	_open_dialog = FileDialog.new()
+	_open_dialog.title = "打开关卡"
+	_open_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	_open_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	_open_dialog.filters = PackedStringArray(["*.tscn ; 关卡场景"])
+	_open_dialog.current_dir = ProjectSettings.globalize_path(LEVELS_DIR)
+	_open_dialog.file_selected.connect(_on_open_file_selected)
+	_ui.add_child(_open_dialog)
+
+
+func _build_confirm_dialog() -> void:
+	_confirm_dialog = ConfirmationDialog.new()
+	_confirm_dialog.title = "确认"
+	_confirm_dialog.initial_position = Window.WINDOW_INITIAL_POSITION_CENTER_MAIN_WINDOW_SCREEN
+	_ui.add_child(_confirm_dialog)
+
+
+func _make_button(text: String, callback: Callable) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.pressed.connect(callback)
+	return button
+
+
+func _show_confirm(text: String, callback: Callable) -> void:
+	_confirm_dialog.dialog_text = text
+	if _confirm_callback.is_valid():
+		_confirm_dialog.confirmed.disconnect(_confirm_callback)
+	_confirm_callback = callback
+	_confirm_dialog.confirmed.connect(callback)
+	_confirm_dialog.popup_centered()
+
+
+# ============================================================
+# Inspector 内容
+# ============================================================
+
+func _rebuild_inspector() -> void:
+	for child in _inspector_content.get_children():
+		child.free()
+	_spin_x = null
+	_spin_y = null
+	_spin_rotation = null
+	_spin_scale_x = null
+	_spin_scale_y = null
+	if _wire_layer.selected_index >= 0:
+		_build_wire_inspector()
+	elif _selection == null or not is_instance_valid(_selection):
+		var hint := Label.new()
+		hint.text = "未选中积木\n\n点击画面中的积木选中；\n点空白处取消；\n点击电线选中电线。"
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_inspector_content.add_child(hint)
+	else:
+		_build_block_inspector()
+
+
+func _build_block_inspector() -> void:
+	var entry := PaletteData.find_entry(_selection.scene_file_path)
+	var title := Label.new()
+	title.text = "◎ %s" % PaletteData.entry_label(_selection.scene_file_path)
+	title.add_theme_font_size_override("font_size", 18)
+	_inspector_content.add_child(title)
+
+	_inspector_content.add_child(_section_label("变换"))
+	var transform_grid := GridContainer.new()
+	transform_grid.columns = 2
+	_inspector_content.add_child(transform_grid)
+	_spin_x = _add_spin(transform_grid, "X", _selection.position.x, 1.0, func(v: float) -> void:
+		if _selection != null:
+			_selection.position.x = v)
+	_spin_y = _add_spin(transform_grid, "Y", _selection.position.y, 1.0, func(v: float) -> void:
+		if _selection != null:
+			_selection.position.y = v)
+	_spin_rotation = _add_spin(transform_grid, "旋转°", rad_to_deg(_selection.rotation), 1.0,
+			func(v: float) -> void:
+				if _selection != null:
+					_selection.rotation = deg_to_rad(v))
+	_spin_scale_x = _add_spin(transform_grid, "缩放X", _selection.scale.x, 0.1, func(v: float) -> void:
+		if _selection != null:
+			_selection.scale.x = maxf(v, SelectionGizmo.MIN_SCALE))
+	_spin_scale_y = _add_spin(transform_grid, "缩放Y", _selection.scale.y, 0.1, func(v: float) -> void:
+		if _selection != null:
+			_selection.scale.y = maxf(v, SelectionGizmo.MIN_SCALE))
+
+	var props: Array = entry.get("props", [])
+	if not props.is_empty():
+		_inspector_content.add_child(_section_label("属性"))
+		var props_grid := GridContainer.new()
+		props_grid.columns = 2
+		_inspector_content.add_child(props_grid)
+		for prop in props:
+			_add_prop_control(props_grid, prop)
+
+	var wires := _wires_for_node(_selection)
+	if not wires.is_empty():
+		_inspector_content.add_child(_section_label("电线"))
+		for pair in wires:
+			_inspector_content.add_child(_make_wire_row(pair["text"], pair["index"]))
+
+
+func _build_wire_inspector() -> void:
+	var title := Label.new()
+	title.text = "◎ 电线"
+	title.add_theme_font_size_override("font_size", 18)
+	_inspector_content.add_child(title)
+	var info := Label.new()
+	var index := _wire_layer.selected_index
+	var wires := _wire_layer.get_wires()
+	if index >= 0 and index < wires.size():
+		var wire: Dictionary = wires[index]
+		info.text = "%s.%s → %s.%s" % [
+			(wire["source"] as Node).name, wire["signal"],
+			(wire["target"] as Node).name, wire["method"],
+		]
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_inspector_content.add_child(info)
+	var delete_button := Button.new()
+	delete_button.text = "断开这条电线"
+	delete_button.pressed.connect(_on_wire_delete_pressed.bind(index))
+	_inspector_content.add_child(delete_button)
+
+
+func _section_label(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_color_override("font_color", Color(0.6, 0.75, 0.9))
+	return label
+
+
+## 数值控件：focus 时压撤销点，改动走 apply 回调（不进撤销栈，避免拖动刷屏）
+func _add_spin(parent: Container, label_text: String, value: float, step: float, apply: Callable) -> SpinBox:
+	if label_text != "":
+		var label := Label.new()
+		label.text = label_text
+		parent.add_child(label)
+	var spin := SpinBox.new()
+	spin.min_value = -100000.0
+	spin.max_value = 100000.0
+	spin.step = step
+	spin.allow_greater = true
+	spin.allow_lesser = true
+	spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spin.value = value
+	spin.value_changed.connect(func(v: float) -> void: apply.call(v))
+	spin.focus_entered.connect(_push_undo)
+	parent.add_child(spin)
+	return spin
+
+
+func _add_prop_control(grid: GridContainer, prop: Dictionary) -> void:
+	var prop_name: StringName = prop["name"]
+	var kind: StringName = prop["kind"]
+	var label := Label.new()
+	label.text = prop["label"]
+	grid.add_child(label)
+	match kind:
+		&"int":
+			_add_spin(grid, "", _selection.get(prop_name), 1.0, func(v: float) -> void:
+				if _selection != null:
+					_selection.set(prop_name, int(v)))
+		&"float":
+			_add_spin(grid, "", _selection.get(prop_name), 0.1, func(v: float) -> void:
+				if _selection != null:
+					_selection.set(prop_name, v))
+		&"bool":
+			var check := CheckBox.new()
+			check.button_pressed = _selection.get(prop_name)
+			check.toggled.connect(func(on: bool) -> void:
+				set_selected_property(prop_name, on))
+			grid.add_child(check)
+		&"color":
+			var picker := ColorPickerButton.new()
+			var undo_open := [false]
+			picker.color = _selection.get(prop_name)
+			picker.color_changed.connect(func(color: Color) -> void:
+				if not undo_open[0]:
+					_push_undo()
+					undo_open[0] = true
+				if _selection != null:
+					_selection.set(prop_name, color))
+			picker.popup_closed.connect(func(_opened: bool) -> void:
+				undo_open[0] = false)
+			grid.add_child(picker)
+		&"vector2":
+			var box := HBoxContainer.new()
+			var current: Vector2 = _selection.get(prop_name)
+			_add_spin(box, "", current.x, 1.0, func(v: float) -> void:
+				if _selection != null:
+					var vec: Vector2 = _selection.get(prop_name)
+					vec.x = v
+					_selection.set(prop_name, vec))
+			_add_spin(box, "", current.y, 1.0, func(v: float) -> void:
+				if _selection != null:
+					var vec: Vector2 = _selection.get(prop_name)
+					vec.y = v
+					_selection.set(prop_name, vec))
+			grid.add_child(box)
+		&"enum":
+			var option := OptionButton.new()
+			var options: Array = prop.get("options", [])
+			for i in options.size():
+				option.add_item(options[i])
+			option.select(_selection.get(prop_name))
+			option.item_selected.connect(func(index: int) -> void:
+				set_selected_property(prop_name, index))
+			grid.add_child(option)
+
+
+func _make_wire_row(text: String, wire_index: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.text = text
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(label)
+	var delete_button := Button.new()
+	delete_button.text = "断开"
+	delete_button.pressed.connect(_on_wire_delete_pressed.bind(wire_index))
+	row.add_child(delete_button)
+	return row
+
+
+func _wires_for_node(node: Node) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var wires := _wire_layer.get_wires()
+	for i in wires.size():
+		var wire: Dictionary = wires[i]
+		if wire["source"] == node:
+			result.append({
+				"index": i,
+				"text": "输出 → %s.%s" % [(wire["target"] as Node).name, wire["method"]],
+			})
+		elif wire["target"] == node:
+			result.append({
+				"index": i,
+				"text": "输入 ← %s.%s" % [(wire["source"] as Node).name, wire["signal"]],
+			})
+	return result
+
+
+func _on_wire_delete_pressed(index: int) -> void:
+	_push_undo()
+	_wire_layer.remove_wire(index)
+	_rebuild_inspector()
+	_update_status()
+
+
+func _refresh_inspector_transform() -> void:
+	if _selection == null:
+		return
+	if _spin_x != null and is_instance_valid(_spin_x):
+		_spin_x.value = _selection.position.x
+	if _spin_y != null and is_instance_valid(_spin_y):
+		_spin_y.value = _selection.position.y
+	if _spin_rotation != null and is_instance_valid(_spin_rotation):
+		_spin_rotation.value = rad_to_deg(_selection.rotation)
+	if _spin_scale_x != null and is_instance_valid(_spin_scale_x):
+		_spin_scale_x.value = _selection.scale.x
+	if _spin_scale_y != null and is_instance_valid(_spin_scale_y):
+		_spin_scale_y.value = _selection.scale.y
+
+
+# ============================================================
+# 内部小工具
+# ============================================================
+
+func _update_status() -> void:
+	var file_name := _current_path.get_file() if not _current_path.is_empty() else "（未保存）"
+	var block_count := 0
+	if _level_root != null:
+		block_count = LevelFileIO.walk_instance_roots(_level_root).size()
+	_status_label.text = "文件：%s%s ｜ 积木：%d ｜ 电线：%d ｜ 选中触发块后从右侧端口拖出电线 ｜ Ctrl+S 保存" % [
+		file_name, " ●" if _dirty else "", block_count, get_wire_count(),
+	]
+
+
+func _to_world(screen_pos: Vector2) -> Vector2:
+	return get_viewport().get_canvas_transform().affine_inverse() * screen_pos
+
+
+func _ui_has_focus() -> bool:
+	return get_viewport().gui_get_focus_owner() != null
+
+
+func _source_signal_of(node: Node) -> StringName:
+	if node.has_signal(&"active_changed"):
+		return &"active_changed"
+	if node.has_signal(&"pressed_changed"):
+		return &"pressed_changed"
+	return &""
+
+
+func _is_valid_wire_target(node: Node, signal_name: StringName) -> bool:
+	if node.has_method(&"set_external_open") \
+			and LevelFileIO.is_valid_wire(signal_name, &"set_external_open"):
+		return true
+	if node.has_method(&"set_enabled") \
+			and LevelFileIO.is_valid_wire(signal_name, &"set_enabled"):
+		return true
+	return false
+
+
+func _block_at_point(world_point: Vector2) -> Node2D:
+	if _level_root == null:
+		return null
+	var blocks := LevelFileIO.walk_instance_roots(_level_root)
+	for i in range(blocks.size() - 1, -1, -1):
+		var node := blocks[i] as Node2D
+		if node == null:
+			continue
+		var size := PaletteData.entry_size(node.scene_file_path)
+		var local := (world_point - node.global_position).rotated(-node.rotation)
+		local.x /= maxf(absf(node.scale.x), 0.0001)
+		local.y /= maxf(absf(node.scale.y), 0.0001)
+		var half := size * 0.5
+		if absf(local.x) <= half.x and absf(local.y) <= half.y:
+			return node
+	return null
+
+
+func _blocks_container() -> Node2D:
+	return _level_root.get_node("Blocks") as Node2D
+
+
+func _unique_block_name(base_name: String) -> String:
+	var name := base_name
+	var counter := 2
+	while _blocks_container().has_node(name):
+		name = "%s%d" % [base_name, counter]
+		counter += 1
+	return name
+
+
+func _spawn_block_impl(scene_path: String, world_position: Vector2) -> Node2D:
+	var packed := load(scene_path) as PackedScene
+	if packed == null:
+		return null
+	var block := packed.instantiate() as Node2D
+	if block == null:
+		return null
+	var entry := PaletteData.find_entry(scene_path)
+	var key: String = entry.get("key", scene_path.get_file().get_basename())
+	block.name = _unique_block_name(key.to_pascal_case())
+	block.position = world_position
+	_blocks_container().add_child(block)
+	block.position = world_position  # 抵消 _ready 的位置改写（移动底座贴 path_a）
+	return block
+
+
+func _root_name_for_file(file_name: String) -> String:
+	var digits := file_name.trim_prefix("level_").split("_")[0]
+	return "Level" + digits
+
+
+# ============================================================
+# UI 事件转发
+# ============================================================
+
+func _on_palette_pressed(scene_path: String) -> void:
+	if _level_root == null:
+		return
+	# 画面中心附近随机偏移，避免每次生成叠在一起
+	var offset := Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0)) * GRID_SIZE
+	spawn_block(scene_path, VIEW_RECT.get_center() + offset)
+
+
+func _on_open_file_selected(path: String) -> void:
+	if not _dirty:
+		_do_open(path, load(path) as PackedScene)
+		return
+	_show_confirm("打开会丢弃未保存的改动，继续吗？", func() -> void:
+		_do_open(path, load(path) as PackedScene))
+
+
+func _on_play_pressed() -> void:
+	if _current_path.is_empty():
+		_play_after_save = true
+		save_as()
+		return
+	_do_play()
+
+
+func _on_gizmo_transform_started() -> void:
+	_push_undo()
+
+
+func _on_gizmo_transform_committed() -> void:
+	_refresh_inspector_transform()
+	_update_status()
+
+
+func _go_to_menu() -> void:
+	get_tree().change_scene_to_file(MENU_SCENE)
