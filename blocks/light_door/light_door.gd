@@ -10,15 +10,18 @@ extends Node2D
 @onready var _plate: StaticBody2D = $DoorPlate
 
 var _origin_position := Vector2.ZERO
+var _origin_rotation := 0.0
 
 
 func _ready() -> void:
 	_origin_position = position
+	_origin_rotation = rotation
 
 
-## 门是否离开原位（供测试 / 关卡逻辑查询，电线移动 1px 即算开）
+## 门是否离开原位（供测试 / 关卡逻辑查询；电线位移或旋转任一发生即算开）
 func is_open() -> bool:
-	return position.distance_to(_origin_position) > 1.0
+	return position.distance_to(_origin_position) > 1.0 \
+			or absf(angle_difference(rotation, _origin_rotation)) > 0.01
 
 
 func _draw() -> void:

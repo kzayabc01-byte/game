@@ -77,6 +77,8 @@ func _run() -> void:
 	var moving := _editor.spawn_block(MOVING_SCENE, Vector2(400, 300))
 	_check("连线成功", _editor.connect_wire(trigger, moving))
 	_check("电线数 1", _editor.get_wire_count() == 1)
+	_check("重复连线到同一机关被拒绝", not _editor.connect_wire(trigger, moving))
+	_check("电线数仍为 1", _editor.get_wire_count() == 1)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await get_tree().process_frame

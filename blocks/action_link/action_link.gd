@@ -70,19 +70,26 @@ func reset_state() -> void:
 	call_deferred("_recheck_source")
 
 
-## 通过入向连接找到开关并查询其当前状态（重置后重新同步用）
+## 通过入向连接找到开关并查询其当前状态（重置后重新同步用）。
+## 手改关卡可能把多个开关接到同一条电线上：任一开关 ON 即算 ON。
 func _recheck_source() -> void:
+	var found := false
+	var any_active := false
 	for conn in get_incoming_connections():
 		var sig: Signal = conn.get("signal")
 		if sig.get_object() == null:
 			continue
 		var source := sig.get_object() as Node
-		if source != null and source.has_method(&"is_active"):
-			_on_signal(source.call(&"is_active"))
-			return
-		if source != null and source.has_method(&"is_pressed"):
-			_on_signal(source.call(&"is_pressed"))
-			return
+		if source == null:
+			continue
+		if source.has_method(&"is_active"):
+			found = true
+			any_active = any_active or bool(source.call(&"is_active"))
+		elif source.has_method(&"is_pressed"):
+			found = true
+			any_active = any_active or bool(source.call(&"is_pressed"))
+	if found:
+		_on_signal(any_active)
 
 
 func _apply() -> void:

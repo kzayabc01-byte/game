@@ -248,6 +248,9 @@ func connect_wire(
 		signal_name = _source_signal_of(source)
 	if signal_name == &"" or not _is_valid_wire_target(target, signal_name):
 		return false
+	# 一个机关只能接一条电线：两条电线会各自 tween 同一目标，互相抢位置
+	if _has_wire_to_target(target):
+		return false
 	_push_undo()
 	var link := _spawn_link_for(target)
 	if link == null:
@@ -487,7 +490,8 @@ func _handle_mouse_motion(screen_pos: Vector2) -> void:
 		_wire_layer.set_preview(true, WireLayer.port_position(_wire_drag_source, true), world_point)
 		var target := _block_at_point(world_point)
 		if target != null and target != _wire_drag_source \
-				and _is_valid_wire_target(target, _wire_drag_signal):
+				and _is_valid_wire_target(target, _wire_drag_signal) \
+				and not _has_wire_to_target(target):
 			_wire_layer.set_highlight_target(target)
 		else:
 			_wire_layer.set_highlight_target(null)
@@ -1164,6 +1168,14 @@ func _is_valid_wire_target(node: Node, signal_name: StringName) -> bool:
 	return node != null and node is Node2D and not node is ActionLink \
 			and node.scene_file_path != "" \
 			and LevelFileIO.is_valid_wire(signal_name, ActionLink.METHOD_NAME)
+
+
+## 目标机关是否已经有一条电线（一个目标只允许一条，避免两条电线抢同一个目标）
+func _has_wire_to_target(target: Node2D) -> bool:
+	for wire in _wire_layer.get_wires():
+		if wire["target"] == target:
+			return true
+	return false
 
 
 func _block_at_point(world_point: Vector2) -> Node2D:

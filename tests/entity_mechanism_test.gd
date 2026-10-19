@@ -73,6 +73,18 @@ func _run_test() -> void:
 	_check("阶段2 石门：重置后回原位（开关 OFF）", not door.is_open())
 	door_link.restore_on_off = true
 
+	# 只旋转不位移也算“开”（is_open 同时看位移与旋转）
+	door_link.move_offset = Vector2.ZERO
+	door_link.rotate_degrees = 30.0
+	_move_source(Vector2(100, 100), 0.0)
+	await _settle(40)
+	_check("阶段2 石门：只旋转（无位移）也算打开", door.is_open())
+	_move_source(Vector2(100, 50), 0.0)
+	await _settle(40)
+	_check("阶段2 石门：旋转后断电恢复", not door.is_open())
+	door_link.move_offset = Vector2(0, -60)
+	door_link.rotate_degrees = 0.0
+
 	# —— 阶段 3：移动底座 + 电线循环（镜面随底座一起动，循环往返 + 重置重放）——
 	var base := MovingBaseScene.instantiate() as MovingBase
 	base.position = Vector2(300, 500)

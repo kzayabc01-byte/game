@@ -87,7 +87,15 @@ func _run() -> void:
 	level01.free()
 
 	# 5. 文件名与解析
-	_check(LevelFileIO.suggest_file_name() == "level_11_说明.tscn", "建议文件名 level_11")
+	# 建议名 = 现有最大编号 + 1（不写死编号：关卡会增删）
+	var suggested := LevelFileIO.suggest_file_name()
+	var max_existing := 0
+	for entry in LevelFileIO.scan_levels():
+		var number_text := entry.trim_prefix("level_").split("_")[0]
+		if number_text.is_valid_int():
+			max_existing = maxi(max_existing, number_text.to_int())
+	_check(suggested == "level_%02d_说明.tscn" % (max_existing + 1),
+			"建议文件名接在最大编号后（%s）" % suggested)
 	_check(LevelFileIO.validate_file_name("level_07_说明.tscn"), "校验合法文件名")
 	_check(LevelFileIO.validate_file_name("level_08.tscn"), "校验纯编号文件名")
 	_check(not LevelFileIO.validate_file_name("level_base.tscn"), "拒绝基座文件名")
