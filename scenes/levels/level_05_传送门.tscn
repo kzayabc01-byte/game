@@ -17,6 +17,7 @@ rotation = -0.349
 
 [node name="PortalA" parent="Blocks" instance=ExtResource("5_portal")]
 position = Vector2(330, 480)
+rotation = 3.1416
 linked_portal = NodePath("../PortalB")
 
 [node name="PortalB" parent="Blocks" instance=ExtResource("5_portal")]

@@ -143,7 +143,7 @@ func _classify_optical(folder: String, node: Node) -> void:
 		if (layer & LAYER_PORTAL) == 0:
 			_error(folder, "传送门应放层 5（当前碰撞层 %d）" % layer)
 		elif not (node as Portal).is_linked():
-			_warn(folder, "传送门没有预配 linked_portal（运行时会自动连最近的同类门）")
+			_warn(folder, "传送门没有配对：填 linked_portal 或 pair_id（都没有时会连最近的同类门，多对门容易串）")
 		else:
 			_ok(folder, "传送门 · 层 5")
 		return

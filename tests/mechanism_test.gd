@@ -43,9 +43,11 @@ func _run_test() -> void:
 	_check("阶段2 分光：下支路接收区点亮", recv_lower.is_lit())
 	_check("阶段2 分光：光源移走后阶段1接收区熄灭", not recv_down.is_lit())
 
-	# —— 阶段 3：传送门（A 进 B 出，方向不变，双向互指）——
+	# —— 阶段 3：传送门（A 进 B 出，双向互指）——
+	# 平面语义：切向保留、法向取反。B 反向摆放（旋转 180°）才能让出射方向与入射一致。
 	var portal_a := _make_portal(Vector2(500, 500), null)
 	var portal_b := _make_portal(Vector2(500, 50), portal_a)
+	portal_b.rotation = PI
 	portal_a.linked_portal = portal_b
 	var recv_portal := _make_receiver(Vector2(650, 50))
 	_move_source(Vector2(100, 500), 0.0)

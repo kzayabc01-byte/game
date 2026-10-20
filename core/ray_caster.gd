@@ -205,7 +205,11 @@ static func _spawn_from_surface(
 			continue
 		var out_color: Color = out.get("color", ray.color)  # 契约扩展字段：变色机关用
 		var out_origin: Vector2 = out.get("origin", hit_pos)
-		queue.append(_continue_ray(ray, out_origin, out_dir, out_color, out_energy, per_segment))
+		# 传送门会在出射光线里标 teleport：这里必须断成两份折线，
+		# 否则渲染器会把“进 A”和“出 B”连成一条穿过整个场景的直线。
+		var breaks_path := bool(out.get("teleport", false))
+		queue.append(_continue_ray(ray, out_origin, out_dir, out_color, out_energy,
+				per_segment or breaks_path))
 		spawned += 1
 
 

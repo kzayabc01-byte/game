@@ -3,7 +3,8 @@
 [ext_resource type="Script" path="res://blocks/portal/portal.gd" id="1_script"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_gate"]
-size = Vector2(8, 96)
+resource_local_to_scene = true
+size = Vector2(16, 96)
 
 [node name="Portal" type="StaticBody2D"]
 collision_layer = 16
