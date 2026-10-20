@@ -7,9 +7,8 @@ extends RefCounted
 
 const CATEGORY_OPTICS := "光学"
 const CATEGORY_SWITCH := "开关"
-const CATEGORY_MECHANISM := "机关"
 const CATEGORY_TERRAIN := "地形"
-const CATEGORIES: Array[String] = [CATEGORY_OPTICS, CATEGORY_SWITCH, CATEGORY_MECHANISM, CATEGORY_TERRAIN]
+const CATEGORIES: Array[String] = [CATEGORY_OPTICS, CATEGORY_SWITCH, CATEGORY_TERRAIN]
 
 ## props 条目：{"name": StringName, "label": String, "kind": StringName,
 ##             "options": Array[String]（仅 enum），以及可选的 min/max/step/suffix}
@@ -24,6 +23,10 @@ static var _entries: Array[Dictionary] = [
 			{"name": &"fine_step_degrees", "label": "微调步进(°)", "kind": &"float"},
 			{"name": &"light_color", "label": "光线颜色", "kind": &"color"},
 		],
+	},
+	{
+		"key": "cocoon", "label": "蚕茧", "category": CATEGORY_OPTICS,
+		"path": "res://blocks/cocoon/cocoon.tscn", "size": Vector2(44, 44), "props": [],
 	},
 	{
 		"key": "mirror", "label": "镜面", "category": CATEGORY_OPTICS,
@@ -88,11 +91,6 @@ static var _entries: Array[Dictionary] = [
 	{
 		"key": "pressure_sensor", "label": "压力传感器", "category": CATEGORY_SWITCH,
 		"path": "res://blocks/pressure_sensor/pressure_sensor.tscn", "size": Vector2(56, 56), "props": [],
-	},
-	# ---------- 机关 ----------
-	{
-		"key": "cocoon", "label": "蚕茧", "category": CATEGORY_MECHANISM,
-		"path": "res://blocks/cocoon/cocoon.tscn", "size": Vector2(44, 44), "props": [],
 	},
 	# ---------- 地形 ----------
 	{
