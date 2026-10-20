@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/concave_lens/concave_lens.tscn" id="2_concave_lens"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="3_light_source"]
+
+[node name="Level07" instance=ExtResource("1_base")]
+
+[node name="Camera2D" parent="." index="0"]
+enabled = false
+[node name="ConcaveLens" parent="Blocks" instance=ExtResource("2_concave_lens")]
+position = Vector2(520.888672, 328.306061)
+[node name="LightSource" parent="Blocks" instance=ExtResource("3_light_source")]
+position = Vector2(352, 320)
+[node name="LightSource2" parent="Blocks" instance=ExtResource("3_light_source")]
+position = Vector2(736, 320)

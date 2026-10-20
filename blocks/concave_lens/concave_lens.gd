@@ -38,12 +38,18 @@ func _draw() -> void:
 	var half := size / 2.0
 	var color := Color(0.55, 0.85, 0.95, 0.9)
 
-	# 凹透镜：两条向内的弧线 + 上下薄边
-	var r := half.y
-	draw_arc(Vector2(-half.x, 0.0), r, -PI * 0.5, PI * 0.5, 18, color, 2.0)
-	draw_arc(Vector2(half.x, 0.0), r, PI * 0.5, PI * 1.5, 18, color, 2.0)
-	draw_line(Vector2(-half.x, -r), Vector2(half.x, -r), color, 2.0)
-	draw_line(Vector2(-half.x, r), Vector2(half.x, r), color, 2.0)
+	# 凹透镜：左右表面向内侧凹陷（中间薄、上下厚）。
+	# 表面是一段大半径圆弧：由弦高公式反推圆心偏移与半径，弧线端点落在上下边。
+	var sagitta := half.x * 0.66
+	var center_offset := sagitta * 0.5 - (half.y * half.y) / (2.0 * sagitta)
+	var arc_radius := absf(center_offset - sagitta)
+	var arc_angle := atan2(half.y, absf(center_offset))
+	draw_arc(Vector2(-half.x + center_offset, 0.0), arc_radius,
+			-arc_angle, arc_angle, 18, color, 2.0)
+	draw_arc(Vector2(half.x - center_offset, 0.0), arc_radius,
+			PI - arc_angle, PI + arc_angle, 18, color, 2.0)
+	draw_line(Vector2(-half.x, -half.y), Vector2(half.x, -half.y), color, 2.0)
+	draw_line(Vector2(-half.x, half.y), Vector2(half.x, half.y), color, 2.0)
 
 	# 分束示意
 	var count := maxi(split_count, 2)
