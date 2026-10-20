@@ -1,8 +1,7 @@
 extends Node
 
 ## level_02 全流程通关测试（联动展示关，验证手写场景连线的正确性）：
-## 石块压传感器 → 底座启动 → 光源 -25° 照触发机关（锁存）→ 石门打开
-## → 光线转回 0°，等镜面扫过蚕茧 → 胜利。
+## 石块压传感器 → 电线直接驱动镜面 → 镜面扫过水平光束 → 蚕茧点亮。
 ## 运行方式（tests/level_02_test.tscn 继承自 level_02）：
 ##   godot --headless --path . res://tests/level_02_test.tscn
 
@@ -19,11 +18,9 @@ func _run_test() -> void:
 	await get_tree().physics_frame
 	var source: LightSource
 	var cocoon: Cocoon
-	var base: MovingBase
+	var mirror: Node2D
 	var block: StoneBlock
 	var sensor: PressureSensor
-	var door: StoneDoor
-	var trigger: TriggerSwitch
 	for node in get_tree().get_nodes_in_group("light_sources"):
 		source = node as LightSource
 	for node in get_tree().get_nodes_in_group("cocoons"):
@@ -33,32 +30,22 @@ func _run_test() -> void:
 			block = node
 		elif node is PressureSensor:
 			sensor = node
-		elif node is TriggerSwitch:
-			trigger = node
-	# 石门/底座是纯执行器（不进 resettables 组），按名字找
-	base = get_tree().root.find_child("MovingBase", true, false) as MovingBase
-	door = get_tree().root.find_child("StoneDoor", true, false) as StoneDoor
-	if source == null or cocoon == null or base == null or block == null or sensor == null or door == null or trigger == null:
+	mirror = get_tree().root.find_child("Mirror", true, false) as Node2D
+	if source == null or cocoon == null or mirror == null or block == null or sensor == null:
 		_check("关卡节点齐全", false)
 		_finish()
 		return
 	_check("关卡节点齐全", true)
 
-	# 第一步：石块拖到压力传感器上 → 移动底座启动
+	# 第一步：石块拖到压力传感器上 → 镜面开始移动
 	block.position = sensor.position
 	await _settle(30)
 	_check("第一步：传感器被压住", sensor.is_pressed())
-	var start_pos := base.position
+	var start_pos := mirror.position
 	await _settle(30)
-	_check("第一步：底座开始移动", base.position.distance_to(start_pos) > 1.0)
+	_check("第一步：镜面开始移动", mirror.position.distance_to(start_pos) > 1.0)
 
-	# 第二步：光源 -25° 照触发机关（锁存）→ 石门打开
-	source.rotation = deg_to_rad(-25.0)
-	await _settle(90)
-	_check("第二步：触发机关激活", trigger.is_active())
-	_check("第二步：石门打开", door.is_open())
-
-	# 第三步：转回 0°，等镜面扫过蚕茧 → 胜利
+	# 第二步：保持水平光束，等移动镜面扫过蚕茧 → 胜利。
 	source.rotation = 0.0
 	var won := false
 	for _frame in 450:
@@ -66,8 +53,8 @@ func _run_test() -> void:
 		if cocoon.is_lit():
 			won = true
 			break
-	_check("第三步：蚕茧点亮", won)
-	_check("第三步：收到关卡完成信号", _level_completed)
+	_check("第二步：蚕茧点亮", won)
+	_check("第二步：收到关卡完成信号", _level_completed)
 	_finish()
 
 

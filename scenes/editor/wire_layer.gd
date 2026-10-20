@@ -91,6 +91,8 @@ func remove_wire(index: int) -> bool:
 	if is_instance_valid(source) and source.is_connected(wire["signal"], Callable(link, ActionLink.METHOD_NAME)):
 		source.disconnect(wire["signal"], Callable(link, ActionLink.METHOD_NAME))
 	if is_instance_valid(link):
+		if link.is_editor_preview_active():
+			link.set_editor_preview_active(false)
 		link.queue_free()
 	_wires.remove_at(index)
 	if selected_index == index:

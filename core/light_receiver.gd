@@ -16,7 +16,7 @@ signal lit_changed(is_lit: bool)
 const RECEIVER_GROUP := "light_receivers"
 const RESETTABLE_GROUP := "resettables"
 
-## 颜色感应：match_color 为 true 时，只有颜色等于 color_filter 的光才触发本机关
+## 普通触发机关可选颜色过滤；不需要单独的“颜色感应开关”积木。
 @export var color_filter: Color = Color.WHITE
 @export var match_color: bool = false
 
@@ -41,7 +41,7 @@ func get_light_color() -> Color:
 	return _light_color
 
 
-## 光线系统用这个判断某条光是否对本机关有效（颜色感应机关靠它过滤）
+## 光线系统用这个判断某条光是否对本机关有效。
 func accepts(color: Color) -> bool:
 	if not match_color:
 		return true

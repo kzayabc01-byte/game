@@ -1,6 +1,6 @@
 extends Node2D
 
-## 核心扩展机制测试：折射 / 分光 / 传送门 / 变色+颜色感应，按阶段顺序验证。
+## 核心扩展机制测试：折射 / 分光 / 传送门 / 变色+普通机关颜色过滤，按阶段顺序验证。
 ## 运行方式（tests/mechanism_test.tscn）：
 ##   godot --headless --path . res://tests/mechanism_test.tscn
 ## 组员写完新机关后，可照这个模板给自己负责的机关写测试。
@@ -53,7 +53,7 @@ func _run_test() -> void:
 	_check("阶段3 传送门：出口方向接收区点亮", recv_portal.is_lit())
 	_check("阶段3 传送门：分光接收区已熄灭", not recv_upper.is_lit())
 
-	# —— 阶段 4：变色机关 + 颜色感应机关（白光穿过滤色片变红）——
+	# —— 阶段 4：变色片 + 普通触发机关的颜色过滤（白光穿过后变红）——
 	var filter := _make_refract(Vector2(300, 700), Vector2(20, 60), 0.0)
 	filter.recolor = true
 	filter.output_color = RED
@@ -63,9 +63,9 @@ func _run_test() -> void:
 	_source.light_color = Color.WHITE
 	_move_source(Vector2(100, 700), 0.0)
 	await _settle()
-	_check("阶段4 颜色：不挑色的接收区点亮", recv_any.is_lit())
-	_check("阶段4 颜色：红色感应接收区点亮", recv_red.is_lit())
-	_check("阶段4 颜色：绿色感应接收区不亮", not recv_green.is_lit())
+	_check("阶段4 颜色：不过滤颜色的机关点亮", recv_any.is_lit())
+	_check("阶段4 颜色：普通机关开启红色过滤后点亮", recv_red.is_lit())
+	_check("阶段4 颜色：普通机关开启绿色过滤后不亮", not recv_green.is_lit())
 	_check("阶段4 颜色：机关读到命中颜色为红", recv_red.get_light_color().is_equal_approx(RED))
 
 	if _failed:

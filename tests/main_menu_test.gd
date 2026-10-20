@@ -2,7 +2,7 @@ extends Node
 
 ## 主菜单测试：确认自动扫描能把 scenes/levels 下的关卡都列出来，
 ## 显示名来自各关卡 LevelManager.level_name（不是文件名兜底），
-## 以及 debug 构建的 × 删除按钮流程（临时关卡文件，测完清理）。
+## 以及 debug 构建的编辑 / 删除按钮流程（临时关卡文件，测完清理）。
 ## 跑法：tools\dev.bat 40
 
 var _failed := 0
@@ -23,7 +23,8 @@ func _ready() -> void:
 	_collect_buttons(menu, texts)
 	var level_buttons: Array[String] = []
 	for text in texts:
-		if text == "退出游戏" or text.begins_with("退出") or text == "×":
+		if text == "退出游戏" or text.begins_with("退出") or text == "×" \
+				or text == "编辑" or text.begins_with("关卡编辑器"):
 			continue
 		level_buttons.append(text)
 
@@ -57,10 +58,14 @@ func _ready() -> void:
 			temp_row = child  # level_99 排在最后，取最后一个行容器
 	_check("临时关卡所在行存在", temp_row != null)
 	var delete_button: Button = null
+	var edit_button: Button = null
 	if temp_row != null:
 		for child in temp_row.get_children():
+			if child is Button and (child as Button).text == "编辑":
+				edit_button = child
 			if child is Button and (child as Button).text == "×":
 				delete_button = child
+	_check("行内编辑按钮存在", edit_button != null)
 	_check("行内删除按钮存在", delete_button != null)
 
 	var dialog: ConfirmationDialog = null

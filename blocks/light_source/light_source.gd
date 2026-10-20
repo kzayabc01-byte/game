@@ -17,7 +17,7 @@ const BASE_RADIUS := 16.0   # 占位外观半径
 @export var max_bounces: int = 12
 @export var rotate_step_degrees: float = 5.0
 @export var fine_step_degrees: float = 1.0
-@export var light_color: Color = Color(1.0, 0.85, 0.3)  # 初始光线颜色（变色/颜色感应机关依赖它）
+@export var light_color: Color = Color(1.0, 0.85, 0.3)  # 初始光线颜色（触发机关可选颜色过滤）
 
 var _dragging: bool = false
 var _initial_rotation: float = 0.0

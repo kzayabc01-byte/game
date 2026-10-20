@@ -98,7 +98,7 @@ func _classify(folder: String, node: Node) -> void:
 			_ok(folder, "机关 · 感光区形状 %d 个" % shapes)
 		return
 
-	if node is StaticBody2D or node is AnimatableBody2D:
+	if node is StaticBody2D or node is AnimatableBody2D or node is CharacterBody2D:
 		var layer: int = node.collision_layer
 		var opaque := (layer & LAYER_OPAQUE) != 0
 		var mirror := (layer & LAYER_MIRROR) != 0
@@ -121,21 +121,6 @@ func _classify(folder: String, node: Node) -> void:
 			_ok(folder, "压力传感器（重物压住发信号，不感光） · mask 1")
 			return
 		_error(folder, "Area2D 但没继承 LightReceiver：机关请 extends LightReceiver")
-		return
-
-	# 开关 → 电线 → 机关 三元模型：门/底座是纯执行器（根节点为位置锚点，由电线驱动）
-	if node is LightDoor or node is StoneDoor:
-		var plate := node.get_node_or_null("DoorPlate") as CollisionObject2D
-		if plate == null:
-			_error(folder, "机关门缺少 DoorPlate 子节点")
-		elif (plate.collision_layer & LAYER_OPAQUE) == 0:
-			_error(folder, "机关门门板应放层 1")
-		else:
-			_ok(folder, "机关门 · 门板层 1（电线驱动）")
-		return
-
-	if node is MovingBase:
-		_ok(folder, "机关底座 · 纯执行器（电线驱动，镜面等由玩家放在上面）")
 		return
 
 	if node is ActionLink:

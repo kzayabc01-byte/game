@@ -8,7 +8,7 @@ extends Control
 ##   * 顺序：按文件名排序，约定 level_NN_说明.tscn（NN 两位数）
 ##   * 显示名：优先读关卡里 LevelManager.level_name；没填就按文件名兜底
 ##   * level_base.tscn 这类模板不会被当成关卡（前缀后必须是数字）
-##   * debug 构建每个关卡按钮旁有 × 删除按钮：确认后连关卡文件一起删（正式导出不显示）
+##   * debug 构建每个关卡旁有「编辑」和「×」：可修改或删除已有文件（正式导出不显示）
 
 const LEVEL_DIR := "res://scenes/levels"
 const LEVEL_PREFIX := "level_"
@@ -65,18 +65,24 @@ func _create_level_buttons() -> void:
 		_level_list.add_child(empty)
 		return
 
-	# debug 构建给每个关卡配一个 × 删除按钮；正式导出看不到
-	var show_delete := OS.is_debug_build()
+	# debug 构建给每个关卡配编辑 / 删除按钮；正式导出看不到
+	var show_developer_tools := OS.is_debug_build()
 	for index in _levels.size():
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 		var button := Button.new()
 		button.text = "%d · %s" % [index + 1, _level_title(_levels[index])]
-		button.custom_minimum_size = Vector2(264.0 if show_delete else 320.0, 48.0)
+		button.custom_minimum_size = Vector2(200.0 if show_developer_tools else 320.0, 48.0)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(_on_level_pressed.bind(index))
 		row.add_child(button)
-		if show_delete:
+		if show_developer_tools:
+			var edit_button := Button.new()
+			edit_button.text = "编辑"
+			edit_button.custom_minimum_size = Vector2(56.0, 48.0)
+			edit_button.tooltip_text = "在关卡编辑器中修改这个关卡"
+			edit_button.pressed.connect(_on_edit_level_pressed.bind(index))
+			row.add_child(edit_button)
 			var delete_button := Button.new()
 			delete_button.text = "×"
 			delete_button.custom_minimum_size = Vector2(48.0, 48.0)
@@ -134,6 +140,15 @@ func _title_from_file(path: String) -> String:
 
 func _on_level_pressed(index: int) -> void:
 	get_tree().change_scene_to_file(_levels[index])
+
+
+func _on_edit_level_pressed(index: int) -> void:
+	if index < 0 or index >= _levels.size():
+		return
+	if not LevelFileIO.queue_level_for_edit(_levels[index]):
+		_status_label.text = "无法编辑：关卡文件不存在"
+		return
+	get_tree().change_scene_to_file("res://scenes/editor/level_editor.tscn")
 
 
 ## 弹确认框：删除会连 scenes/levels/ 里的关卡文件一起删掉

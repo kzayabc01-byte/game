@@ -70,7 +70,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _sync_receivers(hit_colors: Dictionary, delta: float) -> void:
-	# 多个光源 / 分光取并集；颜色取第一个被该机关接受的颜色（颜色感应机关靠 accepts 过滤）
+	# 多个光源 / 分光取并集；普通触发机关可按自身属性过滤颜色。
 	var lit_now: Dictionary = {}
 	for key in hit_colors:
 		var receiver := key as LightReceiver

@@ -25,6 +25,7 @@ var _origin_position := Vector2.ZERO
 var _origin_rotation := 0.0
 var _active := false
 var _tween: Tween = null
+var _editor_preview_active := false
 
 
 func _enter_tree() -> void:
@@ -37,6 +38,7 @@ func _ready() -> void:
 
 ## 编辑器在进树后才设置 target_node（_ready 已跑过）：补一次解析
 func resolve_target() -> void:
+	_editor_preview_active = false
 	_target = get_node_or_null(target_node) as Node2D
 	if is_instance_valid(_target):
 		_origin_position = _target.position
@@ -52,16 +54,44 @@ func is_active() -> bool:
 	return _active
 
 
+## 编辑器在目标被重新摆放后更新动作原点，避免预览仍从旧位置计算。
+func sync_origin_from_target() -> void:
+	if not _editor_preview_active and is_instance_valid(_target):
+		_origin_position = _target.position
+		_origin_rotation = _target.rotation
+
+
+## 编辑器专用的动作位预览。直接定位而不播放 Tween，关卡运行逻辑不受影响。
+func set_editor_preview_active(active: bool) -> bool:
+	if not is_instance_valid(_target):
+		return false
+	_kill_tween()
+	_editor_preview_active = active
+	if active:
+		_target.position = _origin_position + move_offset
+		_target.rotation = _origin_rotation + deg_to_rad(rotate_degrees)
+	else:
+		_target.position = _origin_position
+		_target.rotation = _origin_rotation
+	return true
+
+
+func is_editor_preview_active() -> bool:
+	return _editor_preview_active
+
+
 ## 开关信号入口：active_changed / pressed_changed 都连到这里
 func _on_signal(active: bool) -> void:
 	if _active == active:
 		return
+	_editor_preview_active = false
 	_active = active
 	_apply()
 
 
 func reset_state() -> void:
 	_active = false
+	_editor_preview_active = false
 	_kill_tween()
 	if is_instance_valid(_target):
 		_target.position = _origin_position

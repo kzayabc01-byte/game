@@ -29,18 +29,15 @@ func _run() -> void:
 	var packed06 := load("res://scenes/levels/level_06_机关秀.tscn") as PackedScene
 	var level06 := packed06.instantiate()
 	var text := LevelFileIO.serialize_level(level06)
-	_check(text.contains("[gd_scene load_steps=12 format=3]"), "level_06 头部 load_steps=12")
+	_check(text.contains("[gd_scene load_steps=9 format=3]"), "level_06 头部 load_steps=9")
 	_check(text.contains("[node name=\"Level06\" instance=ExtResource(\"1_base\")]"), "level_06 根节点行")
-	_check(text.contains("level_name = \"机关秀 · 实体机关组\""), "LevelManager 覆盖 level_name")
+	_check(text.contains("level_name = \"机关秀 · 重力镜面\""), "LevelManager 覆盖 level_name")
 	_check(text.contains("position = Vector2(120, 400)"), "Source 位置覆盖")
 	_check(text.contains(
-			"[connection signal=\"pressed_changed\" from=\"Blocks/PressureSensor\" to=\"Blocks/WireBase\" method=\"_on_signal\"]"),
-			"压力传感器→底座电线连接行")
-	_check(text.contains(
-			"[connection signal=\"active_changed\" from=\"Blocks/TriggerSwitch\" to=\"Blocks/WireDoor\" method=\"_on_signal\"]"),
-			"触发开关→石门电线连接行")
-	_check(text.contains("target_node = NodePath(\"../MovingBase\")"), "电线节点目标指向底座")
-	_check(text.contains("repeat = true"), "底座电线循环参数写入")
+			"[connection signal=\"pressed_changed\" from=\"Blocks/PressureSensor\" to=\"Blocks/WireMirror\" method=\"_on_signal\"]"),
+			"压力传感器→镜面电线连接行")
+	_check(text.contains("target_node = NodePath(\"../Mirror\")"), "电线节点目标指向镜面")
+	_check(text.contains("repeat = true"), "镜面电线循环参数写入")
 	_check(not text.contains("WireLayer") and not text.contains("LevelEditor"), "输出不含编辑器节点")
 
 	# 2. 幂等往返：写出 → 读入 → 再序列化 → 完全一致
@@ -52,27 +49,26 @@ func _run() -> void:
 	reloaded.free()
 
 	# 3. 改动 + 新增电线再往返
-	var trigger := level06.get_node("Blocks/TriggerSwitch")
-	var moving := level06.get_node("Blocks/MovingBase")
+	var sensor := level06.get_node("Blocks/PressureSensor")
 	var extra_link := (load("res://blocks/action_link/action_link.tscn") as PackedScene).instantiate() as ActionLink
 	extra_link.name = "Wire"
-	extra_link.target_node = NodePath("../MovingBase")
+	extra_link.target_node = NodePath("../Mirror")
 	extra_link.move_offset = Vector2(32, 0)
 	level06.get_node("Blocks").add_child(extra_link)
-	trigger.active_changed.connect(Callable(extra_link, &"_on_signal"))
+	sensor.pressed_changed.connect(Callable(extra_link, &"_on_signal"))
 	var source := level06.get_node("Blocks/Source") as Node2D
 	source.position = Vector2(150, 420)
 	var text3 := LevelFileIO.serialize_level(level06)
 	_check(text3.contains(
-			"[connection signal=\"active_changed\" from=\"Blocks/TriggerSwitch\" to=\"Blocks/Wire\" method=\"_on_signal\"]"),
+			"[connection signal=\"pressed_changed\" from=\"Blocks/PressureSensor\" to=\"Blocks/Wire\" method=\"_on_signal\"]"),
 			"新增电线连接被序列化")
 	_check(text3.contains("move_offset = Vector2(32, 0)"), "新增电线动作参数被序列化")
 	_check(text3.contains("position = Vector2(150, 420)"), "改动后的位置被序列化")
 	LevelFileIO.write_text(roundtrip_path, text3)
 	var reloaded3 := (load(roundtrip_path) as PackedScene).instantiate()
-	var trigger3 := reloaded3.get_node("Blocks/TriggerSwitch")
-	_check(trigger3.get_signal_connection_list(&"active_changed").size() == 2,
-			"重载后 active_changed 有 2 条连接")
+	var sensor3 := reloaded3.get_node("Blocks/PressureSensor")
+	_check(sensor3.get_signal_connection_list(&"pressed_changed").size() == 2,
+			"重载后 pressed_changed 有 2 条连接")
 	reloaded3.free()
 	level06.free()
 
@@ -80,10 +76,10 @@ func _run() -> void:
 	var packed01 := load("res://scenes/levels/level_01.tscn") as PackedScene
 	var level01 := packed01.instantiate()
 	var text01 := LevelFileIO.serialize_level(level01)
-	_check(text01.contains("[gd_scene load_steps=10 format=3]"), "level_01 头部 load_steps=10")
-	_check(text01.contains("path=\"res://scenes/levels/level_02_折射入门.tscn\" id=\"9_next\""),
+	_check(text01.contains("[gd_scene load_steps=7 format=3]"), "level_01 头部 load_steps=7")
+	_check(text01.contains("path=\"res://scenes/levels/level_02_折射入门.tscn\""),
 			"下一关 PackedScene 进入 ext 表")
-	_check(text01.contains("next_level_scene = ExtResource(\"9_next\")"), "next_level_scene 覆盖行")
+	_check(text01.contains("next_level_scene = ExtResource("), "next_level_scene 覆盖行")
 	level01.free()
 
 	# 5. 文件名与解析
@@ -108,6 +104,13 @@ func _run() -> void:
 	_check(LevelFileIO.is_valid_wire(&"pressed_changed", &"_on_signal"), "电线兼容表允许 pressed_changed→_on_signal")
 	_check(not LevelFileIO.is_valid_wire(&"active_changed", &"set_enabled"), "电线兼容表拒绝旧入口 set_enabled")
 	_check(not LevelFileIO.is_valid_wire(&"active_changed", &"reset_state"), "电线兼容表拒绝 reset_state")
+	_check(not LevelFileIO.queue_level_for_edit("res://scenes/levels/不存在.tscn"),
+			"编辑队列拒绝不存在的关卡")
+	_check(LevelFileIO.queue_level_for_edit("res://scenes/levels/level_01.tscn"),
+			"现有关卡可进入编辑队列")
+	_check(LevelFileIO.take_level_to_edit() == "res://scenes/levels/level_01.tscn",
+			"编辑队列交接正确路径")
+	_check(LevelFileIO.take_level_to_edit().is_empty(), "编辑队列取出后清空")
 
 	# 6. capture/restore 抵消 portal._ready 自动配对副作用
 	var base := (load(LevelFileIO.BASE_SCENE_DEFAULT) as PackedScene).instantiate()

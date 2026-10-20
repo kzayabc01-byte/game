@@ -8,7 +8,7 @@ extends Control
 ##   * 电线 = 关卡里的电线节点（ActionLink：动作参数 + 一条开关信号连接）；
 ##     视觉层（WireLayer）只属于编辑器场景，游戏里没有它 → 电线天然不可见
 ##   * 三元模型：开关（触发/压力感应）→ 电线（移多少/转多少/时长/循环/恢复）
-##     → 机关（石门/光门/移动底座等纯执行器，自己不会感光）
+##     → 任意可动作积木（镜面、墙体等，目标本身不负责感知）
 ##   * 六步加载管线：捕获干净属性 → 中和（process DISABLED + 关相机）→ 进树 →
 ##     编辑器相机 → deferred 清理（LevelManager UI / 蚕茧连接）→ 回写属性
 ##   * 撤销/重做 = 序列化快照 → user:// 临时文件重载换子树（50 步）
@@ -78,7 +78,9 @@ func _ready() -> void:
 	_gizmo.transform_started.connect(_on_gizmo_transform_started)
 	_gizmo.transform_committed.connect(_on_gizmo_transform_committed)
 	_build_ui()
-	new_level()
+	var queued_path := LevelFileIO.take_level_to_edit()
+	if queued_path.is_empty() or not open_level(queued_path):
+		new_level()
 
 
 # ============================================================
@@ -146,6 +148,7 @@ func spawn_block(
 func select(node: Node2D) -> void:
 	if _selection == node:
 		return
+	_restore_wire_previews()
 	_selection = node
 	_wire_layer.selected_index = -1
 	_gizmo.set_target(node)
@@ -154,6 +157,7 @@ func select(node: Node2D) -> void:
 
 
 func clear_selection() -> void:
+	_restore_wire_previews()
 	_selection = null
 	_wire_layer.selected_index = -1
 	_gizmo.set_target(null)
@@ -163,6 +167,8 @@ func clear_selection() -> void:
 
 ## 选中一条电线（Del 断开）
 func select_wire(index: int) -> void:
+	if _wire_layer.selected_index != index:
+		_restore_wire_previews()
 	_selection = null
 	_gizmo.set_target(null)
 	_wire_layer.set_source_hint(null)
@@ -200,7 +206,7 @@ func nudge_selected(delta: Vector2, push_undo := true) -> void:
 		_push_undo()
 	_selection.position += delta
 	_refresh_inspector_transform()
-	_update_status()
+	_on_selected_transform_changed()
 
 
 func rotate_selected(degrees: float, push_undo := true) -> void:
@@ -210,7 +216,7 @@ func rotate_selected(degrees: float, push_undo := true) -> void:
 		_push_undo()
 	_selection.rotation += deg_to_rad(degrees)
 	_refresh_inspector_transform()
-	_update_status()
+	_on_selected_transform_changed()
 
 
 func scale_selected(factor: Vector2, push_undo := true) -> void:
@@ -223,7 +229,7 @@ func scale_selected(factor: Vector2, push_undo := true) -> void:
 		maxf(_selection.scale.y * factor.y, SelectionGizmo.MIN_SCALE)
 	)
 	_refresh_inspector_transform()
-	_update_status()
+	_on_selected_transform_changed()
 
 
 ## 改选中块的属性（Inspector 控件内部传 push_undo=false，自己管撤销点）
@@ -233,6 +239,9 @@ func set_selected_property(prop_name: StringName, value: Variant, push_undo := t
 	if push_undo:
 		_push_undo()
 	_selection.set(prop_name, value)
+	_selection.queue_redraw()
+	if _show_ray_preview:
+		_refresh_ray_preview()
 	_update_status()
 
 
@@ -293,11 +302,19 @@ func redo() -> bool:
 func serialize() -> String:
 	if _level_root == null:
 		return ""
-	return LevelFileIO.serialize_level(_level_root, _level_base_path)
+	# 动作位预览只影响编辑画面：序列化前暂时还原，完成后继续显示预览。
+	var previewed_links := _suspend_wire_previews()
+	var text := LevelFileIO.serialize_level(_level_root, _level_base_path)
+	_resume_wire_previews(previewed_links)
+	return text
 
 
 func get_level_root() -> Node:
 	return _level_root
+
+
+func get_current_path() -> String:
+	return _current_path
 
 
 func get_wire_count() -> int:
@@ -419,6 +436,7 @@ func _escape_pressed() -> void:
 		_cancel_wire_drag()
 		return
 	if _wire_layer.selected_index >= 0:
+		_restore_wire_previews()
 		_wire_layer.selected_index = -1
 		_rebuild_inspector()
 		return
@@ -527,14 +545,17 @@ func _mount_level(instance: Node) -> void:
 	_editor_camera.make_current()
 	_wire_layer.clear()
 	_wire_layer.rebuild_from_level(instance)
-	_cleanup_level.call_deferred(instance)
+	_cleanup_level.call_deferred(instance.get_instance_id())
 	if previous != null:
 		previous.free()
 	_update_status()
 
 
 ## deferred：释放游戏内 UI（胜利标签/提示条），断开蚕茧→胜利流程的连接
-func _cleanup_level(instance: Node) -> void:
+func _cleanup_level(instance_id: int) -> void:
+	var instance := instance_from_id(instance_id) as Node
+	if instance == null:
+		return
 	var manager := instance.get_node_or_null("LevelManager")
 	if manager == null:
 		return
@@ -862,20 +883,25 @@ func _build_block_inspector() -> void:
 	_inspector_content.add_child(transform_grid)
 	_spin_x = _add_spin(transform_grid, "X", _selection.position.x, 1.0, func(v: float) -> void:
 		if _selection != null:
-			_selection.position.x = v)
+			_selection.position.x = v
+			_on_selected_transform_changed())
 	_spin_y = _add_spin(transform_grid, "Y", _selection.position.y, 1.0, func(v: float) -> void:
 		if _selection != null:
-			_selection.position.y = v)
+			_selection.position.y = v
+			_on_selected_transform_changed())
 	_spin_rotation = _add_spin(transform_grid, "旋转°", rad_to_deg(_selection.rotation), 1.0,
 			func(v: float) -> void:
 				if _selection != null:
-					_selection.rotation = deg_to_rad(v))
+					_selection.rotation = deg_to_rad(v)
+					_on_selected_transform_changed())
 	_spin_scale_x = _add_spin(transform_grid, "缩放X", _selection.scale.x, 0.1, func(v: float) -> void:
 		if _selection != null:
-			_selection.scale.x = maxf(v, SelectionGizmo.MIN_SCALE))
+			_selection.scale.x = maxf(v, SelectionGizmo.MIN_SCALE)
+			_on_selected_transform_changed())
 	_spin_scale_y = _add_spin(transform_grid, "缩放Y", _selection.scale.y, 0.1, func(v: float) -> void:
 		if _selection != null:
-			_selection.scale.y = maxf(v, SelectionGizmo.MIN_SCALE))
+			_selection.scale.y = maxf(v, SelectionGizmo.MIN_SCALE)
+			_on_selected_transform_changed())
 
 	var props: Array = entry.get("props", [])
 	if not props.is_empty():
@@ -927,20 +953,29 @@ func _build_wire_inspector() -> void:
 	grid.columns = 2
 	_inspector_content.add_child(grid)
 	_add_spin(grid, "水平移动 X", link.move_offset.x, 8.0, func(v: float) -> void:
-		_set_wire_property(index, &"move_offset", Vector2(v, link.move_offset.y), false))
+		set_wire_property(index, &"move_offset", Vector2(v, link.move_offset.y), false))
 	_add_spin(grid, "垂直移动 Y", link.move_offset.y, 8.0, func(v: float) -> void:
-		_set_wire_property(index, &"move_offset", Vector2(link.move_offset.x, v), false))
+		set_wire_property(index, &"move_offset", Vector2(link.move_offset.x, v), false))
 	_add_spin(grid, "旋转°", link.rotate_degrees, 15.0, func(v: float) -> void:
-		_set_wire_property(index, &"rotate_degrees", v, false))
+		set_wire_property(index, &"rotate_degrees", v, false))
 	_add_spin(grid, "运动时长(秒)", link.duration, 0.1, func(v: float) -> void:
-		_set_wire_property(index, &"duration", v, false))
+		set_wire_property(index, &"duration", v, false))
 	_add_check(grid, "一直重复动作", link.repeat, func(on: bool) -> void:
-		_set_wire_property(index, &"repeat", on))
+		set_wire_property(index, &"repeat", on))
 	_add_check(grid, "断电后恢复原状", link.restore_on_off, func(on: bool) -> void:
-		_set_wire_property(index, &"restore_on_off", on))
+		set_wire_property(index, &"restore_on_off", on))
+
+	var preview_button := Button.new()
+	preview_button.text = "预览动作位"
+	preview_button.toggle_mode = true
+	preview_button.button_pressed = link.is_editor_preview_active()
+	preview_button.tooltip_text = "打开后目标立即显示通电后的位移和旋转；关闭即回到原位。"
+	preview_button.toggled.connect(func(active: bool) -> void:
+		preview_wire_action(index, active))
+	_inspector_content.add_child(preview_button)
 
 	var hint := Label.new()
-	hint.text = "开关 ON：机关从原位运动到动作位（位移+旋转同一动画）。\n开关 OFF：恢复原状，或停在当前位。\n循环：ON 期间原位↔动作位无限往返。"
+	hint.text = "开关 ON：机关从原位运动到动作位（位移+旋转同一动画）。\n开关 OFF：恢复原状，或停在当前位。\n预览动作位：编辑时直接查看目标结果，保存时不会写入预览位置。"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_color_override("font_color", Color(0.75, 0.8, 0.7))
 	_inspector_content.add_child(hint)
@@ -969,6 +1004,7 @@ func _add_spin(parent: Container, label_text: String, value: float, step: float,
 	spin.step = step
 	spin.allow_greater = true
 	spin.allow_lesser = true
+	spin.update_on_text_changed = true
 	spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spin.value = value
 	spin.value_changed.connect(func(v: float) -> void: apply.call(v))
@@ -991,7 +1027,7 @@ func _add_check(parent: Container, label_text: String, value: bool, apply: Calla
 
 ## 改电线节点（ActionLink）的属性。push=true 时压撤销点
 ## （SpinBox 由 focus_entered 统一压点，这里传 false 避免刷屏）。
-func _set_wire_property(index: int, prop_name: StringName, value: Variant, push := true) -> void:
+func set_wire_property(index: int, prop_name: StringName, value: Variant, push := true) -> void:
 	var wires := _wire_layer.get_wires()
 	if index < 0 or index >= wires.size():
 		return
@@ -1001,7 +1037,33 @@ func _set_wire_property(index: int, prop_name: StringName, value: Variant, push 
 	if push:
 		_push_undo()
 	link.set(prop_name, value)
+	if link.is_editor_preview_active():
+		link.set_editor_preview_active(true)
+	_wire_layer.queue_redraw()
+	if _show_ray_preview:
+		_refresh_ray_preview()
 	_update_status()
+
+
+## 在编辑器中直接查看电线的动作位；关闭预览即恢复目标原位。
+func preview_wire_action(index: int, active: bool) -> bool:
+	var wires := _wire_layer.get_wires()
+	if index < 0 or index >= wires.size():
+		return false
+	if active:
+		for i in wires.size():
+			if i == index:
+				continue
+			var other := wires[i]["link"] as ActionLink
+			if other != null and other.is_editor_preview_active():
+				other.set_editor_preview_active(false)
+	var link := wires[index]["link"] as ActionLink
+	if link == null or not link.set_editor_preview_active(active):
+		return false
+	_wire_layer.queue_redraw()
+	if _show_ray_preview:
+		_refresh_ray_preview()
+	return true
 
 
 ## 电线动作摘要（Inspector 列表 / 曲线标签用）
@@ -1026,13 +1088,17 @@ func _add_prop_control(grid: GridContainer, prop: Dictionary) -> void:
 	grid.add_child(label)
 	match kind:
 		&"int":
-			_add_spin(grid, "", _selection.get(prop_name), 1.0, func(v: float) -> void:
-				if _selection != null:
-					_selection.set(prop_name, int(v)))
+			var spin := _add_spin(
+					grid, "", _selection.get(prop_name), float(prop.get("step", 1.0)),
+					func(v: float) -> void:
+						set_selected_property(prop_name, int(v), false))
+			_configure_prop_spin(spin, prop)
 		&"float":
-			_add_spin(grid, "", _selection.get(prop_name), 0.1, func(v: float) -> void:
-				if _selection != null:
-					_selection.set(prop_name, v))
+			var spin := _add_spin(
+					grid, "", _selection.get(prop_name), float(prop.get("step", 0.1)),
+					func(v: float) -> void:
+						set_selected_property(prop_name, v, false))
+			_configure_prop_spin(spin, prop)
 		&"bool":
 			var check := CheckBox.new()
 			check.button_pressed = _selection.get(prop_name)
@@ -1075,6 +1141,14 @@ func _add_prop_control(grid: GridContainer, prop: Dictionary) -> void:
 			option.item_selected.connect(func(index: int) -> void:
 				set_selected_property(prop_name, index))
 			grid.add_child(option)
+
+
+func _configure_prop_spin(spin: SpinBox, prop: Dictionary) -> void:
+	if prop.has("min"):
+		spin.min_value = float(prop["min"])
+	if prop.has("max"):
+		spin.max_value = float(prop["max"])
+	spin.suffix = str(prop.get("suffix", ""))
 
 
 func _make_wire_row(text: String, wire_index: int) -> HBoxContainer:
@@ -1121,15 +1195,55 @@ func _refresh_inspector_transform() -> void:
 	if _selection == null:
 		return
 	if _spin_x != null and is_instance_valid(_spin_x):
-		_spin_x.value = _selection.position.x
+		_spin_x.set_value_no_signal(_selection.position.x)
 	if _spin_y != null and is_instance_valid(_spin_y):
-		_spin_y.value = _selection.position.y
+		_spin_y.set_value_no_signal(_selection.position.y)
 	if _spin_rotation != null and is_instance_valid(_spin_rotation):
-		_spin_rotation.value = rad_to_deg(_selection.rotation)
+		_spin_rotation.set_value_no_signal(rad_to_deg(_selection.rotation))
 	if _spin_scale_x != null and is_instance_valid(_spin_scale_x):
-		_spin_scale_x.value = _selection.scale.x
+		_spin_scale_x.set_value_no_signal(_selection.scale.x)
 	if _spin_scale_y != null and is_instance_valid(_spin_scale_y):
-		_spin_scale_y.value = _selection.scale.y
+		_spin_scale_y.set_value_no_signal(_selection.scale.y)
+
+
+func _on_selected_transform_changed() -> void:
+	if _selection == null or not is_instance_valid(_selection):
+		return
+	_sync_wire_origins_for(_selection)
+	_gizmo.queue_redraw()
+	_wire_layer.queue_redraw()
+	if _show_ray_preview:
+		_refresh_ray_preview()
+	_update_status()
+
+
+func _sync_wire_origins_for(target: Node2D) -> void:
+	for wire in _wire_layer.get_wires():
+		if wire["target"] != target:
+			continue
+		var link := wire["link"] as ActionLink
+		if link != null:
+			link.sync_origin_from_target()
+
+
+func _suspend_wire_previews() -> Array[ActionLink]:
+	var previewed: Array[ActionLink] = []
+	for wire in _wire_layer.get_wires():
+		var link := wire["link"] as ActionLink
+		if link != null and link.is_editor_preview_active():
+			link.set_editor_preview_active(false)
+			previewed.append(link)
+	return previewed
+
+
+func _resume_wire_previews(links: Array[ActionLink]) -> void:
+	for link in links:
+		if is_instance_valid(link):
+			link.set_editor_preview_active(true)
+
+
+func _restore_wire_previews() -> void:
+	_suspend_wire_previews()
 
 
 # ============================================================
@@ -1288,7 +1402,7 @@ func _on_gizmo_transform_started() -> void:
 
 func _on_gizmo_transform_committed() -> void:
 	_refresh_inspector_transform()
-	_update_status()
+	_on_selected_transform_changed()
 
 
 func _go_to_menu() -> void:

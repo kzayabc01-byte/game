@@ -10,7 +10,7 @@ extends RefCounted
 ##   trace_multi —— 每段一份结果 + 总段数预算（光路组契约测试用它）
 ## 组员一般不需要直接使用本类，写机关只需继承 LightReceiver / OpticalSurface。
 
-const LAYER_OPAQUE := 1        # 碰撞层 1：遮光物（墙体 / 门板）
+const LAYER_OPAQUE := 1        # 碰撞层 1：遮光物（墙体 / 石块）
 const LAYER_MIRROR := 2        # 碰撞层 2：镜面
 const LAYER_RECEIVER := 4      # 碰撞层 3：机关接收区
 const LAYER_REFRACT := 8       # 碰撞层 4：折射体（偏转 / 分光 / 变色 / 融化，见 RefractSurface）

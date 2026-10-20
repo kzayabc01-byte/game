@@ -3,7 +3,7 @@ extends Node
 ## 冒烟测试驱动：无头验证 level_01 的完整通关链路。
 ## 运行方式（tests/smoke_test.tscn 继承自 level_01，挂在 TestDriver 节点上）：
 ##   godot --headless --path . res://tests/smoke_test.tscn
-## 流程：光照到门传感器（门锁存打开）→ 光源转到 -45° → 光线经镜面折射 → 蚕茧点亮。
+## 流程：初始直射被墙挡住 → 光源转到 -45° → 光线经镜面反射 → 蚕茧点亮。
 ## 组员做完新机关/新关卡后，可以照这个模板写自己的测试。
 
 var _level_completed := false
@@ -28,12 +28,12 @@ func _run_test() -> void:
 		return
 
 	print("TEST: 光源初始角度 = %.1f°（期望 0°）" % rad_to_deg(source.rotation))
-	print("TEST: 第一阶段——光照门传感器，等待门锁存打开")
+	print("TEST: 第一阶段——初始直射被墙挡住")
 	for _frame in 30:
 		await get_tree().physics_frame
 	print("TEST: 蚕茧此时是否点亮（期望 false）: %s" % cocoon.is_lit())
 
-	print("TEST: 第二阶段——光源转到 -45°")
+	print("TEST: 第二阶段——光源转到 -45°，经镜面反射")
 	source.rotation = deg_to_rad(-45.0)
 	for _frame in 60:
 		await get_tree().physics_frame

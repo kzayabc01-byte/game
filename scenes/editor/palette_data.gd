@@ -1,10 +1,9 @@
 class_name PaletteData
 extends RefCounted
 
-## 积木面板静态目录：编辑器从这里的 16 个条目生成面板（中文标签、分类、场景路径）
+## 积木面板静态目录：编辑器从这里的 12 个条目生成面板（中文标签、分类、场景路径）
 ## 和 Inspector 的属性迷你面板（props 描述每个导出属性怎么编辑）。
-## preset 是可选的生成预设：调色板点生成时应用（变色片/颜色感应开关就是折射面与触发开关的预设）。
-## 说明：人B 的颜色积木交付后在这里补条目即可，其余代码不用动。
+## preset 是可选的生成预设：调色板点生成时应用（变色片是折射面的预设）。
 
 const CATEGORY_OPTICS := "光学"
 const CATEGORY_SWITCH := "开关"
@@ -13,7 +12,7 @@ const CATEGORY_TERRAIN := "地形"
 const CATEGORIES: Array[String] = [CATEGORY_OPTICS, CATEGORY_SWITCH, CATEGORY_MECHANISM, CATEGORY_TERRAIN]
 
 ## props 条目：{"name": StringName, "label": String, "kind": StringName,
-##             "options": Array[String]（仅 enum）}
+##             "options": Array[String]（仅 enum），以及可选的 min/max/step/suffix}
 static var _entries: Array[Dictionary] = [
 	# ---------- 光学 ----------
 	{
@@ -32,7 +31,13 @@ static var _entries: Array[Dictionary] = [
 	},
 	{
 		"key": "refract_surface", "label": "折射面", "category": CATEGORY_OPTICS,
-		"path": "res://blocks/refract_surface/refract_surface.tscn", "size": Vector2(96, 24), "props": [],
+		"path": "res://blocks/refract_surface/refract_surface.tscn", "size": Vector2(96, 24),
+		"props": [
+			{
+				"name": &"bend_degrees", "label": "折射偏角", "kind": &"float",
+				"min": -180.0, "max": 180.0, "step": 1.0, "suffix": "°",
+			},
+		],
 	},
 	{
 		"key": "color_changer", "label": "变色片", "category": CATEGORY_OPTICS,
@@ -40,7 +45,10 @@ static var _entries: Array[Dictionary] = [
 		"props": [
 			{"name": &"recolor", "label": "改色", "kind": &"bool"},
 			{"name": &"output_color", "label": "输出颜色", "kind": &"color"},
-			{"name": &"bend_degrees", "label": "偏折角(°)", "kind": &"float"},
+			{
+				"name": &"bend_degrees", "label": "折射偏角", "kind": &"float",
+				"min": -180.0, "max": 180.0, "step": 1.0, "suffix": "°",
+			},
 			{"name": &"attenuation", "label": "衰减率", "kind": &"float"},
 		],
 		"preset": {"recolor": true, "output_color": Color(1.0, 0.25, 0.25)},
@@ -78,32 +86,10 @@ static var _entries: Array[Dictionary] = [
 		],
 	},
 	{
-		"key": "color_trigger", "label": "颜色感应开关", "category": CATEGORY_SWITCH,
-		"path": "res://blocks/trigger_switch/trigger_switch.tscn", "size": Vector2(40, 40),
-		"props": [
-			{"name": &"latch", "label": "自锁", "kind": &"bool"},
-			{"name": &"match_color", "label": "颜色感应", "kind": &"bool"},
-			{"name": &"color_filter", "label": "感应颜色", "kind": &"color"},
-		],
-		"preset": {"match_color": true, "color_filter": Color(1.0, 0.25, 0.25)},
-	},
-	{
 		"key": "pressure_sensor", "label": "压力传感器", "category": CATEGORY_SWITCH,
 		"path": "res://blocks/pressure_sensor/pressure_sensor.tscn", "size": Vector2(56, 56), "props": [],
 	},
-	# ---------- 机关（纯执行器：动作由电线配置） ----------
-	{
-		"key": "stone_door", "label": "石门", "category": CATEGORY_MECHANISM,
-		"path": "res://blocks/stone_door/stone_door.tscn", "size": Vector2(24, 96), "props": [],
-	},
-	{
-		"key": "light_door", "label": "光门", "category": CATEGORY_MECHANISM,
-		"path": "res://blocks/light_door/light_door.tscn", "size": Vector2(64, 24), "props": [],
-	},
-	{
-		"key": "moving_base", "label": "移动底座", "category": CATEGORY_MECHANISM,
-		"path": "res://blocks/moving_base/moving_base.tscn", "size": Vector2(64, 32), "props": [],
-	},
+	# ---------- 机关 ----------
 	{
 		"key": "cocoon", "label": "蚕茧", "category": CATEGORY_MECHANISM,
 		"path": "res://blocks/cocoon/cocoon.tscn", "size": Vector2(44, 44), "props": [],
@@ -132,7 +118,7 @@ static func find_entry(scene_path: String) -> Dictionary:
 	return {}
 
 
-## 同场景多个条目时（变色片=折射面、颜色感应开关=触发开关），
+## 同场景多个条目时（变色片=折射面），
 ## 用积木名（生成时以 key 命名）区分：名字匹配的条目优先。
 static func find_entry_for(scene_path: String, node_name: String = "") -> Dictionary:
 	var fallback: Dictionary = {}

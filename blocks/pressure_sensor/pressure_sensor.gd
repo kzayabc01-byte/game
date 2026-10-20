@@ -28,7 +28,7 @@ func is_pressed() -> bool:
 
 
 func reset_state() -> void:
-	# 重发当前状态：重物可能没动，但连线的机关（石门等）重置后需要重新同步
+	# 重发当前状态：重物可能没动，但被电线驱动的目标重置后需要重新同步
 	pressed_changed.emit(_pressed)
 
 

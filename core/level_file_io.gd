@@ -21,6 +21,24 @@ const WIRE_TABLE := {
 
 const FLOAT_TOLERANCE := 1e-6
 
+static var _queued_level_to_edit: String = ""
+
+
+## 主菜单与编辑器之间的一次性关卡路径交接。只接受 levels 目录中的现有关卡。
+static func queue_level_for_edit(path: String) -> bool:
+	var prefix := LEVELS_DIR + "/"
+	if not path.begins_with(prefix) or not FileAccess.file_exists(path):
+		return false
+	_queued_level_to_edit = path
+	return true
+
+
+## 取出后立即清空，避免下一次打开编辑器时误载入旧关卡。
+static func take_level_to_edit() -> String:
+	var path := _queued_level_to_edit
+	_queued_level_to_edit = ""
+	return path
+
 
 ## 把整棵关卡树序列化成 .tscn 文本
 static func serialize_level(level_root: Node, base_scene_path: String = BASE_SCENE_DEFAULT) -> String:
@@ -53,7 +71,7 @@ static func serialize_level(level_root: Node, base_scene_path: String = BASE_SCE
 			_append_node_block(lines, child, level_root, ext_map, base_default.get_node_or_null(NodePath(child.name)))
 	base_default.free()
 
-	# 积木实例（含嵌套，如 Blocks/MovingBase/Mirror）：节点 + 属性覆盖
+	# 积木实例（含嵌套实例）：节点 + 属性覆盖
 	for node in walk_instance_roots(level_root):
 		var fresh := (load(node.scene_file_path) as PackedScene).instantiate()
 		_append_node_block(lines, node, level_root, ext_map, fresh)
@@ -76,7 +94,7 @@ static func serialize_level(level_root: Node, base_scene_path: String = BASE_SCE
 	return "\n".join(lines) + "\n"
 
 
-## 进树前捕获积木实例的全部可存储属性（抵消 _ready 副作用：移动底座位移、传送门自动配对）
+## 进树前捕获积木实例的全部可存储属性（抵消 _ready 副作用，如传送门自动配对）
 static func capture_props(level_root: Node) -> Dictionary:
 	var result: Dictionary = {}
 	for node in walk_instance_roots(level_root):
@@ -378,7 +396,7 @@ static func _format_float(value: float) -> String:
 	return text
 
 
-## 名字链相对路径（与 .tscn 里 from="Blocks/StoneDoor" 同款），不依赖节点进树
+## 名字链相对路径（与 .tscn 里 from="Blocks/Mirror" 同款），不依赖节点进树
 static func _relative_path(level_root: Node, node: Node) -> String:
 	var parts: Array[String] = []
 	var current := node
