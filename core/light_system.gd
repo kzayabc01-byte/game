@@ -45,6 +45,7 @@ func _physics_process(delta: float) -> void:
 	var hit_colors: Dictionary = {}  # LightReceiver -> Array[Color]（可能被多条光/多个颜色命中）
 	var segment_sets: Array[PackedVector2Array] = []
 	var segment_colors: Array[Array] = []  # 与 segment_sets 一一对应
+	var width_scales: Array[float] = []   # 与 segment_sets 一一对应（凸透镜聚焦后变细）
 	for source in _sources:
 		var traces := RayCaster.trace_all(
 			space,
@@ -56,6 +57,7 @@ func _physics_process(delta: float) -> void:
 		for trace in traces:
 			segment_sets.append(trace.segments)
 			segment_colors.append(trace.segment_colors)
+			width_scales.append(trace.width_scale)
 			for hit in trace.receiver_hits:
 				var receiver := hit.receiver as LightReceiver
 				if receiver == null:
@@ -65,7 +67,7 @@ func _physics_process(delta: float) -> void:
 				var colors: Array = hit_colors[receiver]
 				if not colors.has(hit.color):
 					colors.append(hit.color)
-	_renderer.set_segments(segment_sets, segment_colors)
+	_renderer.set_segments(segment_sets, segment_colors, width_scales)
 	_sync_receivers(hit_colors, delta)
 
 

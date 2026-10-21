@@ -1,0 +1,49 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/glacier/glacier.tscn" id="2_glacier"]
+[ext_resource type="PackedScene" path="res://blocks/trigger_switch/trigger_switch.tscn" id="3_trigger_switch"]
+[ext_resource type="PackedScene" path="res://blocks/action_link/action_link.tscn" id="4_action_link"]
+[ext_resource type="PackedScene" path="res://blocks/pressure_sensor/pressure_sensor.tscn" id="5_pressure_sensor"]
+[ext_resource type="PackedScene" path="res://blocks/stone_block/stone_block.tscn" id="6_stone_block"]
+[ext_resource type="PackedScene" path="res://blocks/wall/wall.tscn" id="7_wall"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="8_light_source"]
+[ext_resource type="PackedScene" path="res://blocks/cocoon/cocoon.tscn" id="9_cocoon"]
+
+[node name="Level11" instance=ExtResource("1_base")]
+
+[node name="Glacier" parent="Blocks" instance=ExtResource("2_glacier")]
+position = Vector2(736, 288)
+scale = Vector2(0.75, 3.46)
+[node name="TriggerSwitch" parent="Blocks" instance=ExtResource("3_trigger_switch")]
+position = Vector2(544, 192)
+[node name="Wire" parent="Blocks" instance=ExtResource("4_action_link")]
+target_node = NodePath("../Glacier")
+[node name="TriggerSwitch2" parent="Blocks" instance=ExtResource("3_trigger_switch")]
+position = Vector2(480, 352)
+scale = Vector2(0.85, 1.65)
+[node name="Wire2" parent="Blocks" instance=ExtResource("4_action_link")]
+target_node = NodePath("../TriggerSwitch")
+[node name="PressureSensor" parent="Blocks" instance=ExtResource("5_pressure_sensor")]
+position = Vector2(352, 448)
+[node name="Wire3" parent="Blocks" instance=ExtResource("4_action_link")]
+target_node = NodePath("../TriggerSwitch2")
+[node name="StoneBlock" parent="Blocks" instance=ExtResource("6_stone_block")]
+position = Vector2(352, 224)
+[node name="TriggerSwitch3" parent="Blocks" instance=ExtResource("3_trigger_switch")]
+position = Vector2(544, 512)
+[node name="Wire4" parent="Blocks" instance=ExtResource("4_action_link")]
+target_node = NodePath("../StoneBlock")
+[node name="StoneBlock2" parent="Blocks" instance=ExtResource("6_stone_block")]
+position = Vector2(736, 160)
+[node name="Wall" parent="Blocks" instance=ExtResource("7_wall")]
+position = Vector2(736, 512)
+[node name="LightSource" parent="Blocks" instance=ExtResource("8_light_source")]
+position = Vector2(448, 96)
+[node name="Cocoon" parent="Blocks" instance=ExtResource("9_cocoon")]
+position = Vector2(896, 512)
+
+[connection signal="pressed_changed" from="Blocks/PressureSensor" to="Blocks/Wire3" method="_on_signal"]
+[connection signal="active_changed" from="Blocks/TriggerSwitch" to="Blocks/Wire" method="_on_signal"]
+[connection signal="active_changed" from="Blocks/TriggerSwitch2" to="Blocks/Wire2" method="_on_signal"]
+[connection signal="active_changed" from="Blocks/TriggerSwitch3" to="Blocks/Wire4" method="_on_signal"]

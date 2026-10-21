@@ -67,6 +67,21 @@ static var _entries: Array[Dictionary] = [
 		],
 	},
 	{
+		"key": "convex_lens", "label": "凸透镜", "category": CATEGORY_OPTICS,
+		"path": "res://blocks/convex_lens/convex_lens.tscn", "size": Vector2(24, 96),
+		"props": [
+			{
+				"name": &"focus_gain", "label": "聚能倍数", "kind": &"float",
+				"min": 1.0, "max": 4.0, "step": 0.1, "suffix": "×",
+			},
+			{
+				"name": &"beam_narrow", "label": "光柱宽度", "kind": &"float",
+				"min": 0.05, "max": 1.0, "step": 0.05, "suffix": "×",
+			},
+			{"name": &"attenuation", "label": "衰减率", "kind": &"float"},
+		],
+	},
+	{
 		"key": "portal", "label": "传送门", "category": CATEGORY_OPTICS,
 		"path": "res://blocks/portal/portal.tscn", "size": Vector2(24, 96),
 		# 传送门永远成对生成：一次点两个，面对面摆好并自动配对

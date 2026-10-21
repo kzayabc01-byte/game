@@ -1,12 +1,16 @@
 extends Node
 
-## 冰川单测：持续照射会融化、断光暂停、R 重置复原。
+## 冰川单测：能量门槛（弱光不融化 / 强光融化）、持续照射融化、断光暂停、R 重置复原。
 ## 跑法：tools\dev.bat 40
+
+const STRONG := 1.8   # 经过凸透镜增强后的能量
+const WEAK := 1.0     # 光源直接照的能量（低于 required_energy）
 
 var _failed := 0
 
 
 func _ready() -> void:
+	await _test_energy_threshold()
 	await _test_melt_gate()
 	await _test_no_light_no_melt()
 	await _test_reset()
@@ -28,18 +32,42 @@ func _make_glacier() -> Glacier:
 	return ice
 
 
+func _test_energy_threshold() -> void:
+	print("")
+	print("--- 能量门槛：弱光融不动，强光才行 ---")
+	var ice := _make_glacier()
+	var start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start < 600:
+		ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, WEAK)
+		await get_tree().physics_frame
+	_check("弱光(1.0)照 0.6s 不融化", not ice.is_melted())
+	_check("弱光时提示“能量不足”", ice.is_underpowered())
+	_check("弱光时进度为 0", is_zero_approx(ice.get_progress()),
+			"实际 %.3f" % ice.get_progress())
+
+	# 换成强光：同一块冰应该开始融化
+	start = Time.get_ticks_msec()
+	while not ice.is_melted() and Time.get_ticks_msec() - start < 3000:
+		ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, STRONG)
+		await get_tree().physics_frame
+	_check("强光(1.8)能融化", ice.is_melted())
+	ice.queue_free()
+	await get_tree().process_frame
+
+
 func _test_melt_gate() -> void:
 	print("")
 	print("--- 持续照射会融化 ---")
 	var ice := _make_glacier()
 	var start := Time.get_ticks_msec()
 	while not ice.is_melted() and Time.get_ticks_msec() - start < 3000:
-		ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, 1.0)
+		ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, STRONG)
 		await get_tree().physics_frame
 	var elapsed := Time.get_ticks_msec() - start
-	_check("会被光融化", ice.is_melted())
+	_check("会被强光融化", ice.is_melted())
 	_check("耗时接近 melt_seconds(0.2s)", elapsed < 1200, "实际 %d ms" % elapsed)
-	_check("融化后不再参与光路", ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, 1.0).is_empty())
+	_check("融化后不再参与光路",
+			ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, STRONG).is_empty())
 	_check("融化后碰撞层归零", ice.collision_layer == 0, "实际 %d" % ice.collision_layer)
 	ice.queue_free()
 	await get_tree().process_frame
@@ -50,7 +78,7 @@ func _test_no_light_no_melt() -> void:
 	print("--- 断光不融化 ---")
 	var ice := _make_glacier()
 	# 只照一帧，然后停 15 帧
-	ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, 1.0)
+	ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, STRONG)
 	await get_tree().physics_frame
 	for _i in 15:
 		await get_tree().physics_frame
@@ -66,7 +94,7 @@ func _test_reset() -> void:
 	var ice := _make_glacier()
 	var start := Time.get_ticks_msec()
 	while not ice.is_melted() and Time.get_ticks_msec() - start < 3000:
-		ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, 1.0)
+		ice.on_ray(Vector2.RIGHT, Vector2.LEFT, ice.global_position, STRONG)
 		await get_tree().physics_frame
 	_check("先确认已融化", ice.is_melted())
 
