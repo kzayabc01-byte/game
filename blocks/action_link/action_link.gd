@@ -14,7 +14,7 @@ const RESETTABLE_GROUP := "resettables"
 const METHOD_NAME := &"_on_signal"
 
 @export var target_node: NodePath
-@export var move_offset: Vector2 = Vector2(0, -60)
+@export var move_offset: Vector2 = Vector2.ZERO
 @export var rotate_degrees: float = 0.0
 @export var duration: float = 0.8
 @export var repeat: bool = false

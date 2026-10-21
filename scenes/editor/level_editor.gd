@@ -12,10 +12,12 @@ extends Control
 ##   * 六步加载管线：捕获干净属性 → 中和（process DISABLED + 关相机）→ 进树 →
 ##     编辑器相机 → deferred 清理（LevelManager UI / 蚕茧连接）→ 回写属性
 ##   * 撤销/重做 = 序列化快照 → user:// 临时文件重载换子树（50 步）
-##   * 相机固定 1152×648 = 游戏画面本身，所见即所得
+##   * 关卡边界固定 1152×648；编辑相机可缩放 / 平移，但不会写入关卡
+##   * 实时验证会运行光线、重力和机关，退出时恢复进入前快照
 ##
 ## 快捷键：箭头 微移（Shift=32px）· Q/E 旋转 ±15°（Shift=1°）· Del 删除
-##          Ctrl+D 复制 · Ctrl+Z/Y 撤销重做 · Ctrl+S/O/N · Esc 取消选中/返回主菜单
+##          滚轮缩放 · 中键/右键拖动画布 · Ctrl+D 复制 · Ctrl+Z/Y 撤销重做
+##          Ctrl+S/O/N · Esc 取消选中/退出验证/返回主菜单
 
 const LEVELS_DIR := "res://scenes/levels"
 const BASE_SCENE := "res://scenes/levels/level_base.tscn"
@@ -25,6 +27,9 @@ const UNDO_LIMIT := 50
 const GRID_SIZE := 32.0
 const VIEW_RECT := Rect2(0, 0, 1152, 648)
 const UNDO_SWAP_PATH := "user://editor_undo_swap.tscn"
+const MIN_VIEW_ZOOM := 0.5
+const MAX_VIEW_ZOOM := 4.0
+const VIEW_ZOOM_STEP := 1.2
 
 @onready var _ray_renderer: LightRayRenderer = $World/RayRenderer
 @onready var _wire_layer: WireLayer = $World/WireLayer
@@ -53,10 +58,21 @@ var _nudge_timeout := 0.0
 
 var _show_ray_preview := true
 var _play_after_save := false
+var _view_panning := false
+var _pan_button: MouseButton = MOUSE_BUTTON_NONE
+var _validation_mode := false
+var _validation_snapshot: Dictionary = {}
+var _validation_dirty := false
+var _preview_source: Node2D = null
 
 # ---------- UI 引用（代码构建） ----------
 var _inspector_content: VBoxContainer = null
 var _status_label: Label = null
+var _zoom_label: Label = null
+var _palette_panel: PanelContainer = null
+var _inspector_panel: PanelContainer = null
+var _validation_toggle: CheckButton = null
+var _toolbar_edit_controls: Array[BaseButton] = []
 var _save_dialog: ConfirmationDialog = null
 var _save_name_edit: LineEdit = null
 var _save_title_edit: LineEdit = null
@@ -81,6 +97,16 @@ func _ready() -> void:
 	var queued_path := LevelFileIO.take_level_to_edit()
 	if queued_path.is_empty() or not open_level(queued_path):
 		new_level()
+
+
+func _exit_tree() -> void:
+	if _view_panning:
+		_end_view_pan()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and _view_panning:
+		_end_view_pan()
 
 
 # ============================================================
@@ -347,6 +373,93 @@ func get_wire_count() -> int:
 	return _wire_layer.get_wire_count()
 
 
+func get_view_zoom() -> float:
+	return _editor_camera.zoom.x
+
+
+func get_view_center() -> Vector2:
+	return _editor_camera.position
+
+
+func screen_to_world(screen_position: Vector2) -> Vector2:
+	return _to_world(screen_position)
+
+
+## 视图导航只改变编辑相机，不进入撤销栈，也不会写进关卡文件。
+func set_view_zoom(value: float, screen_anchor := Vector2(-1.0, -1.0)) -> void:
+	var target_zoom := clampf(value, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM)
+	if is_equal_approx(target_zoom, get_view_zoom()):
+		_update_zoom_label()
+		return
+	var anchor := screen_anchor
+	if anchor.x < 0.0 or anchor.y < 0.0:
+		anchor = get_viewport_rect().size * 0.5
+	var anchor_before := _to_world(anchor)
+	_editor_camera.zoom = Vector2.ONE * target_zoom
+	_editor_camera.force_update_scroll()
+	var anchor_after := _to_world(anchor)
+	_editor_camera.position += anchor_before - anchor_after
+	_clamp_view_center()
+	_editor_camera.force_update_scroll()
+	_update_zoom_label()
+
+
+func pan_view(screen_delta: Vector2) -> void:
+	_editor_camera.position -= screen_delta / _editor_camera.zoom
+	_clamp_view_center()
+	_editor_camera.force_update_scroll()
+
+
+func reset_view() -> void:
+	_view_panning = false
+	_pan_button = MOUSE_BUTTON_NONE
+	_editor_camera.position = VIEW_RECT.get_center()
+	_editor_camera.zoom = Vector2.ONE
+	_editor_camera.force_update_scroll()
+	_update_zoom_label()
+
+
+func is_validation_mode() -> bool:
+	return _validation_mode
+
+
+## 在编辑器内运行真实光线、重力与机关；退出后恢复进入前的关卡快照。
+func set_validation_mode(active: bool) -> bool:
+	if active == _validation_mode or _level_root == null:
+		return active == _validation_mode
+	if active:
+		_enter_validation_mode()
+	else:
+		_exit_validation_mode()
+	return _validation_mode == active
+
+
+## 不运行动画，直接预览某个开关的全部出线动作；不会污染保存结果。
+func preview_trigger_source(source: Node2D, active: bool) -> bool:
+	if source == null or not is_instance_valid(source) or _source_signal_of(source) == &"":
+		return false
+	if active:
+		_stop_trigger_preview()
+		_suspend_wire_previews()
+		_preview_source = source
+		_set_source_preview_visual(source, true)
+	else:
+		if _preview_source == source:
+			_set_source_preview_visual(source, false)
+			_preview_source = null
+	var found_wire := false
+	for wire in _wire_layer.get_wires():
+		if wire["source"] != source:
+			continue
+		var link := wire["link"] as ActionLink
+		if link != null:
+			found_wire = link.set_editor_preview_active(active) or found_wire
+	_wire_layer.queue_redraw()
+	if _show_ray_preview:
+		_refresh_ray_preview()
+	return found_wire or _source_signal_of(source) != &""
+
+
 # ============================================================
 # 生命周期
 # ============================================================
@@ -356,7 +469,7 @@ func _process(delta: float) -> void:
 		_nudge_timeout -= delta
 		if _nudge_timeout <= 0.0:
 			_nudge_undo_open = false
-	if _level_root == null or not _show_ray_preview:
+	if _validation_mode or _level_root == null or not _show_ray_preview:
 		return
 	_refresh_ray_preview()
 
@@ -364,9 +477,20 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _level_root == null:
 		return
+	if _validation_mode:
+		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+			set_validation_mode(false)
+			get_viewport().set_input_as_handled()
+			return
+		if _handle_view_input(event):
+			get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed:
 		if _handle_key(event):
 			get_viewport().set_input_as_handled()
+		return
+	if _handle_view_input(event):
+		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
@@ -458,6 +582,9 @@ func _delete_pressed() -> void:
 
 
 func _escape_pressed() -> void:
+	if _view_panning:
+		_end_view_pan()
+		return
 	if _wire_dragging:
 		_cancel_wire_drag()
 		return
@@ -478,6 +605,63 @@ func _escape_pressed() -> void:
 # ============================================================
 # 鼠标
 # ============================================================
+
+func _handle_view_input(event: InputEvent) -> bool:
+	var button := event as InputEventMouseButton
+	if button != null:
+		if button.pressed and button.button_index == MOUSE_BUTTON_WHEEL_UP:
+			if _wire_dragging or _gizmo.is_dragging():
+				return false
+			set_view_zoom(get_view_zoom() * VIEW_ZOOM_STEP, button.position)
+			return true
+		if button.pressed and button.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			if _wire_dragging or _gizmo.is_dragging():
+				return false
+			set_view_zoom(get_view_zoom() / VIEW_ZOOM_STEP, button.position)
+			return true
+		if (
+			button.button_index != MOUSE_BUTTON_MIDDLE
+			and button.button_index != MOUSE_BUTTON_RIGHT
+		):
+			return false
+		if button.pressed:
+			if _wire_dragging or _gizmo.is_dragging():
+				return false
+			_view_panning = true
+			_pan_button = button.button_index
+			Input.set_default_cursor_shape(Input.CURSOR_DRAG)
+			return true
+		if _view_panning and button.button_index == _pan_button:
+			_end_view_pan()
+			return true
+		return false
+	var motion := event as InputEventMouseMotion
+	if motion != null and _view_panning:
+		if not Input.is_mouse_button_pressed(_pan_button):
+			_end_view_pan()
+			return true
+		pan_view(motion.relative)
+		return true
+	return false
+
+
+func _end_view_pan() -> void:
+	_view_panning = false
+	_pan_button = MOUSE_BUTTON_NONE
+	Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+
+
+func _clamp_view_center() -> void:
+	_editor_camera.position = Vector2(
+		clampf(_editor_camera.position.x, VIEW_RECT.position.x, VIEW_RECT.end.x),
+		clampf(_editor_camera.position.y, VIEW_RECT.position.y, VIEW_RECT.end.y),
+	)
+
+
+func _update_zoom_label() -> void:
+	if _zoom_label != null and is_instance_valid(_zoom_label):
+		_zoom_label.text = "%d%%" % roundi(get_view_zoom() * 100.0)
+
 
 func _press_world(screen_pos: Vector2) -> void:
 	var world_point := _to_world(screen_pos)
@@ -601,6 +785,7 @@ func _do_new_level() -> void:
 	var instance := (load(BASE_SCENE) as PackedScene).instantiate()
 	_level_base_path = BASE_SCENE
 	_mount_level(instance)
+	reset_view()
 	_current_path = ""
 	_dirty = false
 	_update_status()
@@ -611,6 +796,7 @@ func _do_open(path: String, packed: PackedScene) -> void:
 	_redo_stack.clear()
 	_level_base_path = LevelFileIO.get_base_scene_path_from_file(path)
 	_mount_level(packed.instantiate())
+	reset_view()
 	_current_path = path
 	_dirty = false
 	_update_status()
@@ -643,6 +829,71 @@ func _restore_state(state: Dictionary) -> void:
 		return
 	_level_base_path = state["base"]
 	_mount_level(packed.instantiate())
+
+
+# ============================================================
+# 实时验证
+# ============================================================
+
+func _enter_validation_mode() -> void:
+	_validation_snapshot = _capture_state()
+	_validation_dirty = _dirty
+	_cancel_wire_drag()
+	_end_view_pan()
+	clear_selection()
+	_validation_mode = true
+	_level_root.process_mode = Node.PROCESS_MODE_INHERIT
+	var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
+	if light_system != null:
+		# 挂载新关卡时旧子树可能尚未释放，验证前重扫可去掉失效的组成员引用。
+		light_system.call(&"_refresh_nodes")
+	# 关卡管理器会接管 Esc / R 与过关跳转；验证模式只运行物理、光线和机关。
+	var manager := _level_root.get_node_or_null("LevelManager")
+	if manager != null:
+		manager.process_mode = Node.PROCESS_MODE_DISABLED
+	_apply_validation_ui(true)
+	_update_status()
+
+
+func _exit_validation_mode() -> void:
+	if _level_root != null:
+		_level_root.process_mode = Node.PROCESS_MODE_DISABLED
+	_validation_mode = false
+	_apply_validation_ui(false)
+	if not _validation_snapshot.is_empty():
+		var snapshot := _validation_snapshot
+		_validation_snapshot = {}
+		_restore_state(snapshot)
+	_dirty = _validation_dirty
+	_refresh_ray_preview()
+	_update_status()
+
+
+func _apply_validation_ui(active: bool) -> void:
+	_ray_renderer.visible = not active
+	_wire_layer.visible = not active
+	_gizmo.visible = not active
+	if _palette_panel != null:
+		_palette_panel.visible = not active
+	if _inspector_panel != null:
+		_inspector_panel.visible = not active
+	for control in _toolbar_edit_controls:
+		if is_instance_valid(control):
+			control.disabled = active
+	if _validation_toggle != null:
+		_validation_toggle.set_pressed_no_signal(active)
+		_validation_toggle.text = "结束验证" if active else "实时验证"
+
+
+func _stop_trigger_preview() -> void:
+	if _preview_source != null and is_instance_valid(_preview_source):
+		_set_source_preview_visual(_preview_source, false)
+	_preview_source = null
+
+
+func _set_source_preview_visual(source: Node2D, active: bool) -> void:
+	if source.has_method(&"set_editor_preview_active"):
+		source.call(&"set_editor_preview_active", active)
 
 
 # ============================================================
@@ -729,22 +980,33 @@ func _build_toolbar() -> void:
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	bar.add_child(box)
-	box.add_child(_make_button("新建", func() -> void: new_level()))
-	box.add_child(_make_button("打开", func() -> void: _open_dialog.popup_centered()))
-	box.add_child(_make_button("保存", func() -> void: save()))
-	box.add_child(_make_button("另存为", func() -> void: save_as()))
-	box.add_child(_make_button("试玩", _on_play_pressed))
+	var new_button := _make_button("新建", func() -> void: new_level())
+	var open_button := _make_button("打开", func() -> void: _open_dialog.popup_centered())
+	var save_button := _make_button("保存", func() -> void: save())
+	var save_as_button := _make_button("另存为", func() -> void: save_as())
+	var play_button := _make_button("试玩", _on_play_pressed)
+	for button in [new_button, open_button, save_button, save_as_button, play_button]:
+		box.add_child(button)
+		_toolbar_edit_controls.append(button)
+	_validation_toggle = CheckButton.new()
+	_validation_toggle.text = "实时验证"
+	_validation_toggle.tooltip_text = "运行光线、重力与机关；结束后恢复进入验证前的设计。"
+	_validation_toggle.toggled.connect(func(active: bool) -> void:
+		set_validation_mode(active))
+	box.add_child(_validation_toggle)
 	box.add_child(VSeparator.new())
 	var grid_toggle := CheckButton.new()
 	grid_toggle.text = "网格吸附"
 	grid_toggle.button_pressed = _gizmo.grid_snap_enabled
 	grid_toggle.toggled.connect(func(on: bool) -> void: _gizmo.grid_snap_enabled = on)
 	box.add_child(grid_toggle)
+	_toolbar_edit_controls.append(grid_toggle)
 	var angle_toggle := CheckButton.new()
 	angle_toggle.text = "角度吸附"
 	angle_toggle.button_pressed = _gizmo.angle_snap_enabled
 	angle_toggle.toggled.connect(func(on: bool) -> void: _gizmo.angle_snap_enabled = on)
 	box.add_child(angle_toggle)
+	_toolbar_edit_controls.append(angle_toggle)
 	var ray_toggle := CheckButton.new()
 	ray_toggle.text = "光线预览"
 	ray_toggle.button_pressed = _show_ray_preview
@@ -753,17 +1015,35 @@ func _build_toolbar() -> void:
 		if not on:
 			_ray_renderer.set_segments([], []))
 	box.add_child(ray_toggle)
+	_toolbar_edit_controls.append(ray_toggle)
+	box.add_child(VSeparator.new())
+	var zoom_out := _make_button("−", func() -> void:
+		set_view_zoom(get_view_zoom() / VIEW_ZOOM_STEP))
+	zoom_out.tooltip_text = "缩小画布（也可向下滚轮）"
+	box.add_child(zoom_out)
+	_zoom_label = Label.new()
+	_zoom_label.custom_minimum_size = Vector2(48.0, 0.0)
+	_zoom_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_zoom_label)
+	var zoom_in := _make_button("＋", func() -> void:
+		set_view_zoom(get_view_zoom() * VIEW_ZOOM_STEP))
+	zoom_in.tooltip_text = "放大画布（也可向上滚轮）"
+	box.add_child(zoom_in)
+	var reset_button := _make_button("复位视图", reset_view)
+	reset_button.tooltip_text = "恢复 100% 并回到关卡中心；中键或右键可拖动画布。"
+	box.add_child(reset_button)
+	_update_zoom_label()
 
 
 func _build_palette() -> void:
-	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_LEFT_WIDE)
-	panel.offset_right = 240.0
-	panel.offset_top = 48.0
-	panel.offset_bottom = -32.0
-	_ui.add_child(panel)
+	_palette_panel = PanelContainer.new()
+	_palette_panel.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	_palette_panel.offset_right = 240.0
+	_palette_panel.offset_top = 48.0
+	_palette_panel.offset_bottom = -32.0
+	_ui.add_child(_palette_panel)
 	var scroll := ScrollContainer.new()
-	panel.add_child(scroll)
+	_palette_panel.add_child(scroll)
 	var content := VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(content)
@@ -784,14 +1064,14 @@ func _build_palette() -> void:
 
 
 func _build_inspector() -> void:
-	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	panel.offset_left = -260.0
-	panel.offset_top = 48.0
-	panel.offset_bottom = -32.0
-	_ui.add_child(panel)
+	_inspector_panel = PanelContainer.new()
+	_inspector_panel.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	_inspector_panel.offset_left = -260.0
+	_inspector_panel.offset_top = 48.0
+	_inspector_panel.offset_bottom = -32.0
+	_ui.add_child(_inspector_panel)
 	var scroll := ScrollContainer.new()
-	panel.add_child(scroll)
+	_inspector_panel.add_child(scroll)
 	_inspector_content = VBoxContainer.new()
 	_inspector_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_inspector_content)
@@ -878,7 +1158,9 @@ func _show_confirm(text: String, callback: Callable) -> void:
 
 func _rebuild_inspector() -> void:
 	for child in _inspector_content.get_children():
-		child.free()
+		# pressed / toggled 回调中当前控件处于锁定状态，不能同步 free。
+		_inspector_content.remove_child(child)
+		child.queue_free()
 	_spin_x = null
 	_spin_y = null
 	_spin_rotation = null
@@ -928,6 +1210,25 @@ func _build_block_inspector() -> void:
 		if _selection != null:
 			_selection.scale.y = maxf(v, SelectionGizmo.MIN_SCALE)
 			_on_selected_transform_changed())
+	if _selection is LightSource:
+		var source := _selection as LightSource
+		_inspector_content.add_child(_section_label("光源方向"))
+		var direction_buttons := HBoxContainer.new()
+		var turn_left := _make_button("左转", func() -> void:
+			if _selection == source:
+				rotate_selected(-maxf(source.rotate_step_degrees, 1.0)))
+		turn_left.tooltip_text = "逆时针旋转当前“旋转步进”角度。"
+		var turn_right := _make_button("右转", func() -> void:
+			if _selection == source:
+				rotate_selected(maxf(source.rotate_step_degrees, 1.0)))
+		turn_right.tooltip_text = "顺时针旋转当前“旋转步进”角度。"
+		direction_buttons.add_child(turn_left)
+		direction_buttons.add_child(turn_right)
+		_inspector_content.add_child(direction_buttons)
+		var source_hint := Label.new()
+		source_hint.text = "也可拖动顶部旋转柄，或按 Q / E 调整；光路会立即刷新。"
+		source_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_inspector_content.add_child(source_hint)
 
 	var props: Array = entry.get("props", [])
 	if not props.is_empty():
@@ -946,11 +1247,27 @@ func _build_block_inspector() -> void:
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		hint.add_theme_color_override("font_color", Color(1.0, 0.85, 0.5))
 		_inspector_content.add_child(hint)
+		var preview_source := _selection
+		var trigger_preview := CheckButton.new()
+		trigger_preview.text = "模拟触发（仅预览）"
+		trigger_preview.tooltip_text = "立即显示该开关全部出线的动作结果；不会写入保存文件。"
+		trigger_preview.button_pressed = _preview_source == preview_source
+		trigger_preview.toggled.connect(func(active: bool) -> void:
+			preview_trigger_source(preview_source, active))
+		_inspector_content.add_child(trigger_preview)
 	if not wires.is_empty():
 		if _source_signal_of(_selection) == &"":
 			_inspector_content.add_child(_section_label("电线"))
 		for pair in wires:
 			_inspector_content.add_child(_make_wire_row(pair["text"], pair["index"]))
+
+	_inspector_content.add_child(HSeparator.new())
+	var delete_button := Button.new()
+	delete_button.text = "删除这个积木（Del）"
+	delete_button.tooltip_text = "同时移除与这个积木相连的电线；可以撤销。"
+	delete_button.add_theme_color_override("font_color", Color(1.0, 0.5, 0.45))
+	delete_button.pressed.connect(delete_selected)
+	_inspector_content.add_child(delete_button)
 
 
 func _build_wire_inspector() -> void:
@@ -1077,6 +1394,7 @@ func preview_wire_action(index: int, active: bool) -> bool:
 	if index < 0 or index >= wires.size():
 		return false
 	if active:
+		_stop_trigger_preview()
 		for i in wires.size():
 			if i == index:
 				continue
@@ -1283,6 +1601,7 @@ func _resume_wire_previews(links: Array[ActionLink]) -> void:
 
 func _restore_wire_previews() -> void:
 	_suspend_wire_previews()
+	_stop_trigger_preview()
 
 
 # ============================================================
@@ -1295,7 +1614,10 @@ func _update_status() -> void:
 	if _level_root != null:
 		# 电线节点（ActionLink）也是实例根，但它不是积木
 		block_count = LevelFileIO.walk_instance_roots(_level_root).size() - get_wire_count()
-	_status_label.text = "文件：%s%s ｜ 积木：%d ｜ 电线：%d ｜ 选中触发块后从右侧端口拖出电线 ｜ Ctrl+S 保存" % [
+	if _validation_mode:
+		_status_label.text = "实时验证中 ｜ 拖动光源或按 Q/E 旋转 ｜ 光线、重力和机关正在运行 ｜ Esc 结束并恢复设计"
+		return
+	_status_label.text = "文件：%s%s ｜ 积木：%d ｜ 电线：%d ｜ 滚轮缩放 · 中/右键拖动画布 ｜ Ctrl+S 保存" % [
 		file_name, " ●" if _dirty else "", block_count, get_wire_count(),
 	]
 
@@ -1411,16 +1733,22 @@ func _root_name_for_file(file_name: String) -> String:
 # ============================================================
 
 func _on_palette_pressed(entry: Dictionary) -> void:
-	if _level_root == null:
+	if _level_root == null or _validation_mode:
 		return
-	# 画面中心附近随机偏移，避免每次生成叠在一起
+	# 相机移动后仍生成在当前视野中心，避免新积木落在屏外。
 	var offset := Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0)) * GRID_SIZE
 	var preset: Dictionary = entry.get("preset", {})
-	# 成对积木（传送门）：一次生成两扇，面对面摆好并自动配对
+	var world_position := _to_world(get_viewport_rect().size * 0.5) + offset
+	world_position.x = clampf(world_position.x, VIEW_RECT.position.x, VIEW_RECT.end.x)
+	world_position.y = clampf(world_position.y, VIEW_RECT.position.y, VIEW_RECT.end.y)
+	# 成对积木（传送门）以当前视野中心为基准生成，并让两扇门留在关卡内。
 	if bool(entry.get("spawn_pair", false)):
-		spawn_pair(entry, VIEW_RECT.get_center() + offset)
+		var half_gap := float(entry.get("pair_gap", 260.0)) * 0.5
+		world_position.x = clampf(world_position.x,
+			VIEW_RECT.position.x + half_gap, VIEW_RECT.end.x - half_gap)
+		spawn_pair(entry, world_position)
 		return
-	spawn_block(entry["path"], VIEW_RECT.get_center() + offset, "", preset, str(entry["key"]))
+	spawn_block(entry["path"], world_position, "", preset, str(entry["key"]))
 
 
 ## 成对生成（传送门）：只推一次撤销，返回第一扇门。

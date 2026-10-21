@@ -25,6 +25,12 @@ func is_active() -> bool:
 	return _active
 
 
+## 关卡编辑器的瞬时验证状态；不改变光照、自锁或序列化数据。
+func set_editor_preview_active(active: bool) -> void:
+	_active = active
+	queue_redraw()
+
+
 func on_lit() -> void:
 	if latch:
 		_latched = true

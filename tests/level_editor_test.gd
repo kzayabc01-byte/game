@@ -8,6 +8,7 @@ const WALL_SCENE := "res://blocks/wall/wall.tscn"
 const SWITCH_SCENE := "res://blocks/trigger_switch/trigger_switch.tscn"
 const MIRROR_SCENE := "res://blocks/mirror/mirror.tscn"
 const REFRACT_SCENE := "res://blocks/refract_surface/refract_surface.tscn"
+const LIGHT_SOURCE_SCENE := "res://blocks/light_source/light_source.tscn"
 
 var _failures: Array[String] = []
 var _editor: LevelEditor = null
@@ -62,14 +63,37 @@ func _run() -> void:
 	var level_camera := root.get_node_or_null("Camera2D") as Camera2D
 	_check("关卡相机已禁用", level_camera != null and not level_camera.enabled)
 
-	# 3. 生成与命名
+	# 3. 画布缩放 / 平移只改变编辑视图，不污染关卡数据
+	var view_text_before := _editor.serialize()
+	var anchor := Vector2(720.0, 360.0)
+	var anchor_world_before := _editor.screen_to_world(anchor)
+	_editor.set_view_zoom(2.0, anchor)
+	var anchor_world_after := _editor.screen_to_world(anchor)
+	_check("缩放以鼠标位置为锚点",
+			anchor_world_before.distance_to(anchor_world_after) < 0.1)
+	var center_before_pan := _editor.get_view_center()
+	_editor.pan_view(Vector2(80.0, -40.0))
+	_check("画布可以平移", _editor.get_view_center().distance_to(center_before_pan) > 1.0)
+	_check("缩放和平移不写进关卡", _editor.serialize() == view_text_before)
+	_editor.reset_view()
+	_check("复位视图恢复 100% 和关卡中心",
+			is_equal_approx(_editor.get_view_zoom(), 1.0)
+			and _editor.get_view_center().is_equal_approx(Vector2(576.0, 324.0)))
+	var zoom_in_button := _find_base_button(_editor, "＋")
+	_check("工具栏提供放大按钮", zoom_in_button != null)
+	if zoom_in_button != null:
+		zoom_in_button.pressed.emit()
+	_check("点击放大按钮立即生效", _editor.get_view_zoom() > 1.0)
+	_editor.reset_view()
+
+	# 4. 生成与命名
 	var wall1 := _editor.spawn_block(WALL_SCENE, Vector2(100, 100))
 	var wall2 := _editor.spawn_block(WALL_SCENE, Vector2(200, 200))
 	_check("生成第一块墙体命名 Wall", wall1 != null and wall1.name == "Wall")
 	_check("生成第二块墙体命名 Wall2", wall2 != null and wall2.name == "Wall2")
 	_check("积木挂在 Blocks 下", wall1 != null and wall1.get_parent() == root.get_node("Blocks"))
 
-	# 4. 微移 + 撤销复原（撤销会换子树，引用全部重取）
+	# 5. 微移 + 撤销复原（撤销会换子树，引用全部重取）
 	_editor.select(wall1)
 	_editor.nudge_selected(Vector2(32, 0))
 	_check("微移生效", wall1.position == Vector2(132, 100))
@@ -88,8 +112,18 @@ func _run() -> void:
 		await get_tree().process_frame
 	_check("检查器键入旋转角后画面立即响应",
 			wall1 != null and absf(rad_to_deg(wall1.rotation) - 37.0) < 0.01)
+	var light_source := _editor.spawn_block(
+			LIGHT_SOURCE_SCENE, Vector2(720.0, 120.0)) as LightSource
+	var source_rotation_before := light_source.rotation
+	var turn_source_button := _find_base_button(_editor, "右转")
+	_check("光源检查器提供快捷旋转", turn_source_button != null)
+	if turn_source_button != null:
+		turn_source_button.pressed.emit()
+	_check("快捷旋转光源会立即改变方向",
+			light_source.rotation > source_rotation_before
+			and light_source.get_light_direction().y > 0.0)
 
-	# 5. 电线连线
+	# 6. 电线连线
 	var trigger := _editor.spawn_block(SWITCH_SCENE, Vector2(300, 300))
 	var mirror := _editor.spawn_block(MIRROR_SCENE, Vector2(400, 300))
 	_check("连线成功", _editor.connect_wire(trigger, mirror))
@@ -131,7 +165,82 @@ func _run() -> void:
 			and mirror.position == Vector2(416, 300)
 			and absf(mirror.rotation) < 0.01)
 
-	# 6. 序列化内容
+	# 信号源可一次预览全部出线，不运行关卡也能核对机关动作。
+	_editor.select(trigger)
+	var trigger_preview := _find_base_button(_editor, "模拟触发（仅预览）")
+	_check("触发机关提供模拟开关", trigger_preview != null)
+	if trigger_preview != null:
+		trigger_preview.set_pressed_no_signal(true)
+		trigger_preview.toggled.emit(true)
+	_check("模拟触发会显示机关动作位",
+			trigger.is_active() and mirror.position == Vector2(480, 252))
+	if trigger_preview != null:
+		trigger_preview.set_pressed_no_signal(false)
+		trigger_preview.toggled.emit(false)
+	_check("关闭模拟触发会恢复原位",
+			not trigger.is_active() and mirror.position == Vector2(416, 300))
+
+	# 实时验证运行真实信号和 Tween；退出后必须恢复进入前快照。
+	# 光线系统会持续重算照射状态；锁存开关保证手动注入的上升沿可观察。
+	_editor.set_selected_property(&"latch", true)
+	_editor.set_wire_property(0, &"duration", 0.01)
+	var validation_text := _editor.serialize()
+	var validation_toggle := _find_base_button(_editor, "实时验证")
+	_check("工具栏提供实时验证", validation_toggle != null)
+	if validation_toggle != null:
+		validation_toggle.set_pressed_no_signal(true)
+		validation_toggle.toggled.emit(true)
+	_check("实时验证会启用关卡处理",
+			_editor.is_validation_mode()
+			and root.process_mode == Node.PROCESS_MODE_INHERIT)
+	(trigger as TriggerSwitch).apply_lit(true)
+	for _frame in range(30):
+		if mirror.position.distance_to(Vector2(480, 252)) < 1.0:
+			break
+		await get_tree().physics_frame
+	_check("实时验证中触发机关会驱动目标",
+			mirror.position.distance_to(Vector2(480, 252)) < 1.0)
+	if validation_toggle != null:
+		validation_toggle.set_pressed_no_signal(false)
+		validation_toggle.toggled.emit(false)
+	_check("结束实时验证会回到编辑模式", not _editor.is_validation_mode())
+	root = _editor.get_level_root()
+	trigger = root.get_node("Blocks/TriggerSwitch") as Node2D
+	mirror = root.get_node("Blocks/Mirror") as Node2D
+	link = root.get_node_or_null("Blocks/Wire") as ActionLink
+	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
+	var validation_text_after := _editor.serialize()
+	_check("结束实时验证恢复设计快照",
+			_normalize_root_name(validation_text_after) == _normalize_root_name(validation_text)
+			and mirror.position == Vector2(416, 300))
+
+	# 删除积木走真实按钮，并确认不会重现“释放正在发信号按钮”的对象锁错误。
+	_editor.select(light_source)
+	var delete_source_button := _find_base_button(_editor, "删除这个积木（Del）")
+	_check("积木检查器提供删除按钮", delete_source_button != null)
+	if delete_source_button != null:
+		delete_source_button.pressed.emit()
+		await get_tree().process_frame
+	_check("点击删除积木后编辑器仍运行且积木已移除",
+			is_instance_valid(_editor) and not root.get_node("Blocks").has_node("LightSource"))
+
+	# 断开电线必须点击真实 Inspector 按钮，直接调 API 会漏掉对象锁崩溃。
+	_editor.select_wire(0)
+	var disconnect_button := _find_base_button(_editor, "断开这条电线")
+	_check("电线检查器提供断开按钮", disconnect_button != null)
+	if disconnect_button != null:
+		disconnect_button.pressed.emit()
+		await get_tree().process_frame
+	_check("点击断开不会退出且电线已删除",
+			is_instance_valid(_editor) and _editor.get_wire_count() == 0)
+	_check("断开电线可以撤销", _editor.undo())
+	root = _editor.get_level_root()
+	trigger = root.get_node("Blocks/TriggerSwitch") as Node2D
+	mirror = root.get_node("Blocks/Mirror") as Node2D
+	link = root.get_node_or_null("Blocks/Wire") as ActionLink
+	_check("撤销后电线恢复", _editor.get_wire_count() == 1 and link != null)
+
+	# 7. 序列化内容
 	var text := _editor.serialize()
 	_check("序列化含正确电线连接行", text.contains(
 			"[connection signal=\"active_changed\" from=\"Blocks/TriggerSwitch\" to=\"Blocks/Wire\" method=\"_on_signal\"]"))
@@ -216,6 +325,28 @@ func _run() -> void:
 			and filtered_trigger.color_filter.is_equal_approx(Color(1.0, 0.25, 0.25)))
 
 	_finish()
+
+
+func _find_base_button(node: Node, text: String) -> BaseButton:
+	if node is BaseButton and (node as BaseButton).text == text:
+		return node as BaseButton
+	for child in node.get_children():
+		var found := _find_base_button(child, text)
+		if found != null:
+			return found
+	return null
+
+
+func _normalize_root_name(text: String) -> String:
+	var lines := text.split("\n")
+	for index in lines.size():
+		if not lines[index].begins_with("[node name="):
+			continue
+		var instance_position := lines[index].find(" instance=")
+		if instance_position >= 0:
+			lines[index] = "[node name=\"ROOT\"" + lines[index].substr(instance_position)
+		break
+	return "\n".join(lines)
 
 
 func _finish() -> void:

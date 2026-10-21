@@ -27,6 +27,12 @@ func is_pressed() -> bool:
 	return _pressed
 
 
+## 关卡编辑器的瞬时验证状态；不依赖物理重叠，也不会写入关卡。
+func set_editor_preview_active(active: bool) -> void:
+	_pressed = active
+	queue_redraw()
+
+
 func reset_state() -> void:
 	# 重发当前状态：重物可能没动，但被电线驱动的目标重置后需要重新同步
 	pressed_changed.emit(_pressed)
