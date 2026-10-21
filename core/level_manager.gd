@@ -5,7 +5,14 @@ extends Node
 ## 用法：每个关卡场景放一个本节点（level_base 已放好），
 ## 在检查器里设置 level_name 和 next_level_scene。
 
+enum PublicationState { DRAFT, PUBLISHED }
+
 @export var level_name: String = "关卡 1"
+@export var publication_state: PublicationState = PublicationState.DRAFT
+@export_range(1, 99, 1) var chapter: int = 1
+@export_range(1, 99, 1) var order_in_chapter: int = 1
+@export_range(1, 5, 1) var difficulty: int = 1
+@export var mechanic_tags: PackedStringArray = []
 @export var next_level_scene: PackedScene
 @export var main_menu_scene: PackedScene = preload("res://scenes/main/main.tscn")
 

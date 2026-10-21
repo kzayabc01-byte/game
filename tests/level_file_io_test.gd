@@ -32,6 +32,11 @@ func _run() -> void:
 	_check(text.contains("[gd_scene load_steps=9 format=3]"), "level_06 头部 load_steps=9")
 	_check(text.contains("[node name=\"Level06\" instance=ExtResource(\"1_base\")]"), "level_06 根节点行")
 	_check(text.contains("level_name = \"机关秀 · 重力镜面\""), "LevelManager 覆盖 level_name")
+	_check(text.contains("publication_state = 1"), "正式关卡发布状态被序列化")
+	_check(text.contains("chapter = 2") and text.contains("order_in_chapter = 3"),
+			"章节与章节内顺序被序列化")
+	_check(text.contains("mechanic_tags = PackedStringArray(\"重力\", \"电线\", \"压力传感\")"),
+			"玩法标签被序列化")
 	_check(text.contains("position = Vector2(120, 400)"), "Source 位置覆盖")
 	_check(text.contains(
 			"[connection signal=\"pressed_changed\" from=\"Blocks/PressureSensor\" to=\"Blocks/WireMirror\" method=\"_on_signal\"]"),
@@ -111,6 +116,9 @@ func _run() -> void:
 	_check(LevelFileIO.take_level_to_edit() == "res://scenes/levels/level_01.tscn",
 			"编辑队列交接正确路径")
 	_check(LevelFileIO.take_level_to_edit().is_empty(), "编辑队列取出后清空")
+	var draft_errors := LevelFileIO.validate_level_for_publication(
+			"res://scenes/levels/level_07_说明.tscn")
+	_check(draft_errors.has("至少需要一个通关目标"), "缺少通关目标的草稿不能发布")
 
 	# 6. capture/restore 抵消 portal._ready 自动配对副作用
 	var base := (load(LevelFileIO.BASE_SCENE_DEFAULT) as PackedScene).instantiate()

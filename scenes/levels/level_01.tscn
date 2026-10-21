@@ -36,4 +36,6 @@ scale = Vector2(1, 1.5)
 
 [node name="LevelManager" parent="." index="3"]
 level_name = "示例关卡 · 镜面转角"
+publication_state = 1
+mechanic_tags = PackedStringArray("镜面")
 next_level_scene = ExtResource("6_next")

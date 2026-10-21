@@ -13,6 +13,11 @@
 
 [node name="LevelManager" parent="." index="3"]
 level_name = "机关秀 · 重力镜面"
+publication_state = 1
+chapter = 2
+order_in_chapter = 3
+difficulty = 3
+mechanic_tags = PackedStringArray("重力", "电线", "压力传感")
 
 [node name="Source" parent="Blocks" instance=ExtResource("2_source")]
 position = Vector2(120, 400)

@@ -20,6 +20,10 @@ const WIRE_TABLE := {
 }
 
 const FLOAT_TOLERANCE := 1e-6
+const LEVEL_METADATA_KEYS: Array[StringName] = [
+	&"level_name", &"publication_state", &"chapter", &"order_in_chapter",
+	&"difficulty", &"mechanic_tags",
+]
 
 static var _queued_level_to_edit: String = ""
 
@@ -38,6 +42,86 @@ static func take_level_to_edit() -> String:
 	var path := _queued_level_to_edit
 	_queued_level_to_edit = ""
 	return path
+
+
+## 不进场景树读取关卡目录所需元数据，避免触发游戏逻辑。
+static func read_level_metadata(path: String) -> Dictionary:
+	var packed := ResourceLoader.load(
+			path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	if packed == null:
+		return {}
+	var level_root := packed.instantiate()
+	var manager := level_root.get_node_or_null("LevelManager") as LevelManager
+	if manager == null:
+		level_root.free()
+		return {}
+	var result := {
+		&"level_name": manager.level_name,
+		&"publication_state": int(manager.publication_state),
+		&"chapter": manager.chapter,
+		&"order_in_chapter": manager.order_in_chapter,
+		&"difficulty": manager.difficulty,
+		&"mechanic_tags": manager.mechanic_tags.duplicate(),
+	}
+	level_root.free()
+	return result
+
+
+## 工坊发布只改变同一关卡的目录元数据，不复制或移动关卡文件。
+static func update_level_metadata(path: String, values: Dictionary) -> Error:
+	var packed := ResourceLoader.load(
+			path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	if packed == null:
+		return ERR_FILE_NOT_FOUND
+	var level_root := packed.instantiate()
+	var manager := level_root.get_node_or_null("LevelManager") as LevelManager
+	if manager == null:
+		level_root.free()
+		return ERR_INVALID_DATA
+	for key in LEVEL_METADATA_KEYS:
+		if values.has(key):
+			manager.set(key, values[key])
+	var base_path := get_base_scene_path_from_file(path)
+	var text := serialize_level(level_root, base_path)
+	level_root.free()
+	var error := write_text(path, text)
+	if error == OK:
+		ResourceLoader.load(path, "PackedScene", ResourceLoader.CACHE_MODE_REPLACE)
+	return error
+
+
+## 返回发布阻断项；空数组表示关卡具备进入“开始游戏”的最低结构。
+static func validate_level_for_publication(path: String) -> PackedStringArray:
+	var errors := PackedStringArray()
+	var packed := ResourceLoader.load(
+			path, "PackedScene", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene
+	if packed == null:
+		errors.append("关卡文件无法载入")
+		return errors
+	var level_root := packed.instantiate()
+	var manager := level_root.get_node_or_null("LevelManager") as LevelManager
+	if manager == null:
+		errors.append("缺少 LevelManager")
+	else:
+		if manager.level_name.strip_edges().is_empty():
+			errors.append("关卡名称不能为空")
+		if manager.chapter < 1 or manager.order_in_chapter < 1:
+			errors.append("章节和章节内顺序必须大于 0")
+	var has_source := false
+	var has_goal := false
+	for node in walk_instance_roots(level_root):
+		has_source = has_source or node is LightSource
+		has_goal = has_goal or node is Cocoon
+		if node is ActionLink:
+			var link := node as ActionLink
+			if link.get_node_or_null(link.target_node) == null:
+				errors.append("电线 %s 的目标机关不存在" % link.name)
+	if not has_source:
+		errors.append("至少需要一个光源")
+	if not has_goal:
+		errors.append("至少需要一个通关目标")
+	level_root.free()
+	return errors
 
 
 ## 把整棵关卡树序列化成 .tscn 文本
@@ -372,6 +456,11 @@ static func _format_value(value: Variant, level_root: Node, ext_map: Dictionary)
 			]
 		TYPE_NODE_PATH:
 			return "NodePath(\"%s\")" % String(value).c_escape()
+		TYPE_PACKED_STRING_ARRAY:
+			var parts := PackedStringArray()
+			for item in value:
+				parts.append("\"%s\"" % String(item).c_escape())
+			return "PackedStringArray(%s)" % ", ".join(parts)
 		TYPE_OBJECT:
 			if value is PackedScene:
 				if value.resource_path.is_empty():

@@ -10,6 +10,9 @@
 
 [node name="LevelManager" parent="."]
 level_name = "示例 2 · 折射偏折"
+publication_state = 1
+order_in_chapter = 2
+mechanic_tags = PackedStringArray("折射")
 
 [node name="Source" parent="Blocks" instance=ExtResource("2_source")]
 position = Vector2(140, 460)

@@ -797,7 +797,7 @@ func _build_save_dialog() -> void:
 	_save_name_edit = LineEdit.new()
 	content.add_child(_save_name_edit)
 	var title_label := Label.new()
-	title_label.text = "关卡名（显示在主菜单）"
+	title_label.text = "工坊关卡名（发布后显示在开始游戏）"
 	content.add_child(title_label)
 	_save_title_edit = LineEdit.new()
 	content.add_child(_save_title_edit)

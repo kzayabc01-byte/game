@@ -1,9 +1,9 @@
 extends Node
 
-## 主菜单测试：确认自动扫描能把 scenes/levels 下的关卡都列出来，
-## 显示名来自各关卡 LevelManager.level_name（不是文件名兜底），
-## 以及 debug 构建的编辑 / 删除按钮流程（临时关卡文件，测完清理）。
-## 跑法：tools\dev.bat 40
+## 主菜单 / 开始游戏 / 关卡工坊验收：正式关卡与草稿隔离，
+## 草稿可以发布、进入玩家目录、撤回并保留，副本始终从草稿开始。
+
+const LEVEL_01 := "res://scenes/levels/level_01.tscn"
 
 var _failed := 0
 
@@ -15,96 +15,153 @@ func _ready() -> void:
 		_finish()
 		return
 
-	var menu := packed.instantiate()
+	var menu := packed.instantiate() as MainMenu
 	add_child(menu)
 	await get_tree().process_frame
 
-	var texts: Array[String] = []
-	_collect_buttons(menu, texts)
-	var level_buttons: Array[String] = []
-	for text in texts:
-		if text == "退出游戏" or text.begins_with("退出") or text == "×" \
-				or text == "编辑" or text.begins_with("关卡编辑器"):
-			continue
-		level_buttons.append(text)
+	var home_texts := _collect_control_texts(menu)
+	_check("主页提供开始游戏", home_texts.has("开始游戏"))
+	_check("debug 主页提供关卡工坊", home_texts.has("关卡工坊"))
+	_check("主页不直接堆放关卡", not _has(home_texts, "折射偏折"))
 
-	print("  自动扫描到的关卡按钮：")
-	for text in level_buttons:
-		print("    - %s" % text)
+	# 必须走真实 Button 信号；直接调用公开方法无法发现点击时的生命周期问题。
+	var start_button := _find_button(menu, "开始游戏")
+	_check("开始游戏按钮可以取得", start_button != null)
+	if start_button != null:
+		start_button.pressed.emit()
+		await get_tree().process_frame
+	_check("点击开始游戏会打开正式关卡页",
+			(menu.get_node("Title") as Label).text == "开始游戏")
+	var home_button := _find_button(menu, "← 返回主菜单")
+	if home_button != null:
+		home_button.pressed.emit()
+		await get_tree().process_frame
+	var workshop_button := _find_button(menu, "关卡工坊")
+	_check("关卡工坊按钮可以取得", workshop_button != null)
+	if workshop_button != null:
+		workshop_button.pressed.emit()
+		await get_tree().process_frame
+	_check("点击关卡工坊会打开工坊页",
+			(menu.get_node("Title") as Label).text == "关卡工坊")
+	var publish_button := _find_button(menu, "发布为正式关卡")
+	_check("发布按钮可以取得", publish_button != null)
+	if publish_button != null:
+		publish_button.pressed.emit()
+		await get_tree().process_frame
+	var publish_dialog := _find_visible_publish_dialog(menu)
+	_check("点击发布会打开发布窗口", publish_dialog != null)
+	if publish_dialog != null:
+		publish_dialog.hide()
 
-	_check("至少列出 5 个关卡", level_buttons.size() >= 5, "实际 %d 个" % level_buttons.size())
-	_check("包含「折射偏折」", _has(level_buttons, "折射偏折"))
-	_check("包含「一分为三」", _has(level_buttons, "一分为三"))
-	_check("包含「融冰」", _has(level_buttons, "融冰"))
-	_check("包含「传送门」", _has(level_buttons, "传送门"))
-	_check("关卡按文件名排序（2 在 5 之前）", _ordered(level_buttons))
+	menu.show_start_game()
+	var play_texts := _collect_control_texts(menu.get_node("%LevelList"))
+	_check("开始游戏包含镜面正式关", _has(play_texts, "镜面转角"))
+	_check("开始游戏包含折射正式关", _has(play_texts, "折射偏折"))
+	_check("开始游戏包含传送门正式关", _has(play_texts, "传送门"))
+	_check("开始游戏不显示第7关草稿", not _has(play_texts, "level_07"))
+	_check("开始游戏按章节展示", _has(play_texts, "第 1 章") and _has(play_texts, "第 2 章"))
+
+	menu.show_workshop()
+	var workshop_texts := _collect_control_texts(menu.get_node("%LevelList"))
+	_check("工坊同时显示已发布状态", workshop_texts.has("已发布"))
+	_check("工坊同时显示草稿状态", workshop_texts.has("草稿"))
+	_check("草稿提供发布入口", workshop_texts.has("发布为正式关卡"))
+	_check("正式关卡提供撤回入口", workshop_texts.has("撤回发布"))
+	_check("工坊提供新建草稿入口", workshop_texts.has("＋ 新建草稿关卡"))
+
+	var records := menu.get_level_records()
+	var published_count := 0
+	var draft_count := 0
+	for record in records:
+		if record[&"published"]:
+			published_count += 1
+		else:
+			draft_count += 1
+	_check("六个既有关卡迁移为正式关卡", published_count >= 6)
+	_check("第7、8关保留为工坊草稿", draft_count >= 2)
+
+	# 用第1关生成临时副本，完整验证 草稿 → 发布 → 撤回 → 删除。
+	var temp_path := menu.duplicate_level_as_draft(LEVEL_01)
+	_check("复制正式关卡会生成新文件", not temp_path.is_empty()
+			and FileAccess.file_exists(temp_path))
+	var temp_metadata := LevelFileIO.read_level_metadata(temp_path)
+	_check("副本默认是草稿", int(temp_metadata.get(
+			&"publication_state", -1)) == LevelManager.PublicationState.DRAFT)
+
+	var publish_errors := menu.publish_level(temp_path, {
+		&"level_name": "发布流程测试",
+		&"chapter": 3,
+		&"order_in_chapter": 1,
+		&"difficulty": 4,
+		&"mechanic_tags": PackedStringArray(["镜面", "测试"]),
+	})
+	_check("结构完整的草稿可以发布", publish_errors.is_empty(),
+			"；".join(publish_errors))
+	temp_metadata = LevelFileIO.read_level_metadata(temp_path)
+	var saved_tags: PackedStringArray = temp_metadata.get(
+			&"mechanic_tags", PackedStringArray())
+	_check("发布状态保存进关卡", int(temp_metadata.get(
+			&"publication_state", -1)) == LevelManager.PublicationState.PUBLISHED)
+	_check("章节、难度和标签保存进关卡",
+			int(temp_metadata.get(&"chapter", 0)) == 3
+			and int(temp_metadata.get(&"difficulty", 0)) == 4
+			and saved_tags.has("测试"))
+
+	menu.show_start_game()
+	play_texts = _collect_control_texts(menu.get_node("%LevelList"))
+	_check("发布后进入开始游戏", _has(play_texts, "发布流程测试"))
+	_check("发布后出现第三章", _has(play_texts, "第 3 章"))
+
+	_check("正式关卡可以撤回发布", menu.unpublish_level(temp_path))
+	menu.show_start_game()
+	play_texts = _collect_control_texts(menu.get_node("%LevelList"))
+	_check("撤回后退出开始游戏", not _has(play_texts, "发布流程测试"))
+	_check("撤回不会删除关卡文件", FileAccess.file_exists(temp_path))
+	_check("草稿文件可以删除", menu._delete_level_file(temp_path))
+	_check("临时关卡已经清理", not FileAccess.file_exists(temp_path))
 
 	menu.queue_free()
 	await get_tree().process_frame
-
-	# —— × 删除按钮流程（debug 构建）：临时关卡 → 按 × → 确认 → 文件删除 + 列表刷新 ——
-	var temp_path := "res://scenes/levels/level_99_删除测试.tscn"
-	_write_temp_level(temp_path)
-	var menu2 := packed.instantiate()
-	add_child(menu2)
-	await get_tree().process_frame
-	var texts2: Array[String] = []
-	_collect_buttons(menu2, texts2)
-	_check("临时关卡出现在列表里", _has(texts2, "删除测试"))
-
-	var temp_row: HBoxContainer = null
-	for child in menu2.get_node("%LevelList").get_children():
-		if child is HBoxContainer:
-			temp_row = child  # level_99 排在最后，取最后一个行容器
-	_check("临时关卡所在行存在", temp_row != null)
-	var delete_button: Button = null
-	var edit_button: Button = null
-	if temp_row != null:
-		for child in temp_row.get_children():
-			if child is Button and (child as Button).text == "编辑":
-				edit_button = child
-			if child is Button and (child as Button).text == "×":
-				delete_button = child
-	_check("行内编辑按钮存在", edit_button != null)
-	_check("行内删除按钮存在", delete_button != null)
-
-	var dialog: ConfirmationDialog = null
-	if delete_button != null:
-		delete_button.pressed.emit()
-		for child in menu2.get_children():
-			if child is ConfirmationDialog:
-				dialog = child
-	_check("弹出删除确认框", dialog != null)
-	if dialog != null:
-		dialog.confirmed.emit()
-	await get_tree().process_frame
-	_check("关卡文件已被删除", not FileAccess.file_exists(temp_path))
-	var texts_after: Array[String] = []
-	_collect_buttons(menu2, texts_after)
-	_check("列表已刷新（不再显示删除测试）", not _has(texts_after, "删除测试"))
-	_check("状态栏提示已删除",
-			(menu2.get_node("%StatusLabel") as Label).text.contains("已删除关卡"))
-	menu2.queue_free()
-	await get_tree().process_frame
-
-	# 兜底清理：失败路径下也别把临时关卡留给其他测试
-	if FileAccess.file_exists(temp_path):
+	if not temp_path.is_empty() and FileAccess.file_exists(temp_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
 	_finish()
 
 
-## 写一个最小可加载的临时关卡场景（没有 LevelManager，显示名走文件名兜底）
-func _write_temp_level(path: String) -> void:
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	file.store_string("[gd_scene format=3]\n\n[node name=\"Level99\" type=\"Node2D\"]\n")
-	file.close()
+func _collect_control_texts(node: Node) -> Array[String]:
+	var result: Array[String] = []
+	_collect_control_texts_recursive(node, result)
+	return result
 
 
-func _collect_buttons(node: Node, out: Array[String]) -> void:
+func _collect_control_texts_recursive(node: Node, out: Array[String]) -> void:
 	if node is Button:
 		out.append((node as Button).text)
+	elif node is Label:
+		out.append((node as Label).text)
 	for child in node.get_children():
-		_collect_buttons(child, out)
+		_collect_control_texts_recursive(child, out)
+
+
+func _find_button(node: Node, text: String) -> Button:
+	if node is Button and (node as Button).text == text:
+		return node as Button
+	for child in node.get_children():
+		var found := _find_button(child, text)
+		if found != null:
+			return found
+	return null
+
+
+func _find_visible_publish_dialog(node: Node) -> ConfirmationDialog:
+	for child in node.get_children():
+		if child is ConfirmationDialog:
+			var dialog := child as ConfirmationDialog
+			if dialog.visible and dialog.title == "发布为正式关卡":
+				return dialog
+		var nested := _find_visible_publish_dialog(child)
+		if nested != null:
+			return nested
+	return null
 
 
 func _has(texts: Array[String], needle: String) -> bool:
@@ -112,17 +169,6 @@ func _has(texts: Array[String], needle: String) -> bool:
 		if text.contains(needle):
 			return true
 	return false
-
-
-func _ordered(texts: Array[String]) -> bool:
-	var index_02 := -1
-	var index_05 := -1
-	for i in texts.size():
-		if texts[i].contains("示例 2"):
-			index_02 = i
-		if texts[i].contains("示例 5"):
-			index_05 = i
-	return index_02 >= 0 and index_05 >= 0 and index_02 < index_05
 
 
 func _finish() -> void:

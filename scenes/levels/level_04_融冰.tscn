@@ -10,6 +10,10 @@
 
 [node name="LevelManager" parent="."]
 level_name = "示例 4 · 融冰"
+publication_state = 1
+chapter = 2
+difficulty = 2
+mechanic_tags = PackedStringArray("融冰")
 
 [node name="Source" parent="Blocks" instance=ExtResource("2_source")]
 position = Vector2(140, 300)
