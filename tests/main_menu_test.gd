@@ -9,39 +9,42 @@ var _failed := 0
 
 
 func _ready() -> void:
-	var packed := load("res://scenes/main/main.tscn") as PackedScene
-	_check("主菜单场景可加载", packed != null)
-	if packed == null:
+	var home_packed := load("res://scenes/MainMenu/MainMenu.tscn") as PackedScene
+	_check("主页场景可加载", home_packed != null)
+	var packed := load("res://scenes/LevelSelectPage/LevelSelectPage.tscn") as PackedScene
+	_check("关卡选择场景可加载", packed != null)
+	if home_packed == null or packed == null:
 		_finish()
 		return
 
-	var menu := packed.instantiate() as MainMenu
+	var home := home_packed.instantiate()
+	add_child(home)
+	await get_tree().process_frame
+	var home_texts := _collect_control_texts(home)
+	_check("主页提供开始游戏", home_texts.has("开始游戏"))
+	_check("主页提供选择关卡", home_texts.has("选择关卡"))
+	_check("主页提供关卡工坊", home_texts.has("关卡工坊"))
+	_check("主页提供退出游戏", home_texts.has("退出游戏"))
+	home.queue_free()
+	await get_tree().process_frame
+
+	LevelSelectPage.open_workshop_on_entry = true
+	var workshop_entry := packed.instantiate() as LevelSelectPage
+	add_child(workshop_entry)
+	await get_tree().process_frame
+	_check("从主页进入时直接显示关卡工坊",
+			(workshop_entry.get_node("Title") as Label).text == "关卡工坊")
+	workshop_entry.queue_free()
+	await get_tree().process_frame
+
+	var menu := packed.instantiate() as LevelSelectPage
 	add_child(menu)
 	await get_tree().process_frame
 
-	var home_texts := _collect_control_texts(menu)
-	_check("主页提供开始游戏", home_texts.has("开始游戏"))
-	_check("debug 主页提供关卡工坊", home_texts.has("关卡工坊"))
-	_check("主页不直接堆放关卡", not _has(home_texts, "折射偏折"))
-
-	# 必须走真实 Button 信号；直接调用公开方法无法发现点击时的生命周期问题。
-	var start_button := _find_button(menu, "开始游戏")
-	_check("开始游戏按钮可以取得", start_button != null)
-	if start_button != null:
-		start_button.pressed.emit()
-		await get_tree().process_frame
-	_check("点击开始游戏会打开正式关卡页",
-			(menu.get_node("Title") as Label).text == "开始游戏")
-	var home_button := _find_button(menu, "← 返回主菜单")
-	if home_button != null:
-		home_button.pressed.emit()
-		await get_tree().process_frame
-	var workshop_button := _find_button(menu, "关卡工坊")
-	_check("关卡工坊按钮可以取得", workshop_button != null)
-	if workshop_button != null:
-		workshop_button.pressed.emit()
-		await get_tree().process_frame
-	_check("点击关卡工坊会打开工坊页",
+	_check("关卡选择页默认显示正式关卡",
+			(menu.get_node("Title") as Label).text == "选择关卡")
+	menu.show_workshop()
+	_check("关卡选择页可以打开工坊",
 			(menu.get_node("Title") as Label).text == "关卡工坊")
 	var publish_button := _find_button(menu, "发布为正式关卡")
 	_check("发布按钮可以取得", publish_button != null)

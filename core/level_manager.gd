@@ -14,7 +14,7 @@ enum PublicationState { DRAFT, PUBLISHED }
 @export_range(1, 5, 1) var difficulty: int = 1
 @export var mechanic_tags: PackedStringArray = []
 @export var next_level_scene: PackedScene
-@export var main_menu_scene: PackedScene = preload("res://scenes/main/main.tscn")
+@export var main_menu_scene: PackedScene = preload("res://scenes/MainMenu/MainMenu.tscn")
 
 var _win_label: Label
 var _won: bool = false

@@ -1,14 +1,15 @@
-class_name MainMenu
+class_name LevelSelectPage
 extends Control
 
-## 玩家入口与关卡工坊共用的目录界面。
-## 正式关卡只出现在“开始游戏”；全部草稿与正式关卡都由 debug 工坊统一维护。
-
-enum ViewMode { HOME, START_GAME, WORKSHOP }
+## 关卡选择与关卡工坊共用的目录界面。
+## 正式关卡只出现在关卡选择；全部草稿与正式关卡都由 debug 工坊统一维护。
 
 const LEVEL_DIR := "res://scenes/levels"
 const LEVEL_PREFIX := "level_"
 const EDITOR_SCENE := "res://scenes/editor/level_editor.tscn"
+const MAIN_MENU_SCENE := "res://scenes/MainMenu/MainMenu.tscn"
+
+static var open_workshop_on_entry := false
 
 @onready var _title_label: Label = $Title
 @onready var _subtitle_label: Label = $Subtitle
@@ -16,7 +17,6 @@ const EDITOR_SCENE := "res://scenes/editor/level_editor.tscn"
 @onready var _status_label: Label = %StatusLabel
 @onready var _quit_button: Button = %QuitButton
 
-var _view_mode := ViewMode.HOME
 var _levels: Array[String] = []
 var _level_records: Array[Dictionary] = []
 var _publish_path := ""
@@ -33,16 +33,17 @@ func _ready() -> void:
 	_quit_button.pressed.connect(_on_quit_pressed)
 	_build_publish_dialog()
 	_reload_records()
-	_show_home()
+	if open_workshop_on_entry:
+		open_workshop_on_entry = false
+		_show_workshop()
+	else:
+		_show_start_game()
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
 		return
-	if _view_mode == ViewMode.HOME:
-		get_tree().quit()
-	else:
-		_show_home()
+	_go_to_main_menu()
 
 
 func show_start_game() -> void:
@@ -135,24 +136,12 @@ func duplicate_level_as_draft(path: String) -> String:
 	return target_path
 
 
-func _show_home() -> void:
-	_view_mode = ViewMode.HOME
-	_title_label.text = "光线游戏"
-	_subtitle_label.text = "折射、连接与机关"
-	_clear_level_list()
-	var start_button := _make_button("开始游戏", _show_start_game)
-	start_button.add_theme_font_size_override("font_size", 22)
-	_level_list.add_child(start_button)
-	if OS.is_debug_build():
-		var workshop_button := _make_button("关卡工坊", _show_workshop)
-		workshop_button.add_theme_font_size_override("font_size", 22)
-		_level_list.add_child(workshop_button)
-	_status_label.text = "选择入口"
+func _go_to_main_menu() -> void:
+	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
 
 
 func _show_start_game() -> void:
-	_view_mode = ViewMode.START_GAME
-	_title_label.text = "开始游戏"
+	_title_label.text = "选择关卡"
 	_subtitle_label.text = "选择一个正式关卡"
 	_clear_level_list()
 	var published: Array[Dictionary] = []
@@ -174,12 +163,11 @@ func _show_start_game() -> void:
 				current_chapter = record[&"chapter"]
 				_level_list.add_child(_make_section_label("第 %d 章" % current_chapter))
 			_level_list.add_child(_make_play_button(record))
-	_level_list.add_child(_make_button("← 返回主菜单", _show_home, Vector2(320.0, 42.0)))
+	_level_list.add_child(_make_button("← 返回主菜单", _go_to_main_menu, Vector2(320.0, 42.0)))
 	_status_label.text = "共 %d 个正式关卡" % published.size()
 
 
 func _show_workshop() -> void:
-	_view_mode = ViewMode.WORKSHOP
 	_title_label.text = "关卡工坊"
 	_subtitle_label.text = "草稿可以测试，发布后才会进入“开始游戏”"
 	_clear_level_list()
@@ -191,7 +179,7 @@ func _show_workshop() -> void:
 	else:
 		for record in _level_records:
 			_level_list.add_child(_make_workshop_card(record))
-	_level_list.add_child(_make_button("← 返回主菜单", _show_home, Vector2(320.0, 42.0)))
+	_level_list.add_child(_make_button("← 返回主菜单", _go_to_main_menu, Vector2(320.0, 42.0)))
 	_status_label.text = "共 %d 个工坊关卡" % _level_records.size()
 
 
@@ -551,7 +539,7 @@ func _root_name_for_file(file_name: String) -> String:
 
 
 func _on_quit_pressed() -> void:
-	get_tree().quit()
+	_go_to_main_menu()
 
 
 func _on_level_completed(level_name: String) -> void:

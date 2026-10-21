@@ -45,8 +45,7 @@ theme_override_font_sizes/font_size = 20
 text = "转动光源，穿过机关，点亮蚕茧"
 horizontal_alignment = 1
 
-[node name="LevelList" type="VBoxContainer" parent="." unique_id=933791395]
-unique_name_in_owner = true
+[node name="ContentScroll" type="ScrollContainer" parent="." unique_id=933791395]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -59,7 +58,7 @@ grow_horizontal = 2
 grow_vertical = 2
 horizontal_scroll_mode = 0
 
-[node name="LevelList" type="VBoxContainer" parent="ContentScroll"]
+[node name="LevelList" type="VBoxContainer" parent="ContentScroll" unique_id=863094638]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(760, 0)
 layout_mode = 2
@@ -94,4 +93,4 @@ offset_right = 136.0
 offset_bottom = -16.0
 grow_horizontal = 0
 grow_vertical = 0
-text = "退出游戏"
+text = "返回主页"

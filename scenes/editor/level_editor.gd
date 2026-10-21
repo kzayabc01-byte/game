@@ -17,12 +17,12 @@ extends Control
 ##
 ## 快捷键：箭头 微移（Shift=32px）· Q/E 旋转 ±15°（Shift=1°）· Del 删除
 ##          滚轮缩放 · 中键/右键拖动画布 · Ctrl+D 复制 · Ctrl+Z/Y 撤销重做
-##          Ctrl+S/O/N · Esc 取消选中/退出验证/返回主菜单
+##          Ctrl+S/O/N · Esc 取消选中/退出验证/返回关卡选择
 
 const LEVELS_DIR := "res://scenes/levels"
 const BASE_SCENE := "res://scenes/levels/level_base.tscn"
 const ACTION_LINK_SCENE := "res://blocks/action_link/action_link.tscn"
-const MENU_SCENE := "res://scenes/main/main.tscn"
+const MENU_SCENE := "res://scenes/LevelSelectPage/LevelSelectPage.tscn"
 const UNDO_LIMIT := 50
 const GRID_SIZE := 32.0
 const VIEW_RECT := Rect2(0, 0, 1152, 648)
@@ -597,7 +597,7 @@ func _escape_pressed() -> void:
 		clear_selection()
 		return
 	if _dirty:
-		_show_confirm("返回主菜单？未保存的改动会丢失。", _go_to_menu)
+		_show_confirm("返回关卡选择？未保存的改动会丢失。", _go_to_menu)
 	else:
 		_go_to_menu()
 
