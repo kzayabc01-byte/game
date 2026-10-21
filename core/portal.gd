@@ -17,12 +17,12 @@ extends OpticalSurface
 ##      门有多长，能接住的命中点就有多宽 —— 整块门面都能传送；
 ##   4. mirror_out = true 时切向同时取反（u → -u、du → -du），做“不可能光路”。
 ##
-## 配对（决定跟谁成对）：
-##   - linked_portal：显式指定（关卡里最稳，推荐）；
-##   - pair_id：给一对门填同一个 id，运行时会自动配对（多对门同场时不串门），
-##     同时这个 id 会显示在门上，方便玩家看出对应关系；
-##   - 两者都没有时，auto_link 才会退化为“最近的同类门”（自由放置兜底）。
-##   没配对的门会**吞掉光线**，并在门的占位外观上画红叉。
+## 配对（决定跟谁成对）——**只看编号/链接，与两扇门的距离无关**：
+##   - linked_portal：显式指定（关卡/编辑器生成时最稳，优先）；
+##   - pair_id：给一对门填同一个 id（如 "1"、"2"），运行时会按 id 配对；
+##     同一个 id 有多扇门时按节点创建顺序取第一个，多余的保持未配对并告警；
+##   - 两者都没有 = **未配对**：吞掉光线、门上画红叉，绝不按“离得近”去猜。
+##   所以把两扇已配对的门拉开多远都不会影响配对关系。
 ##
 ## 每条光线对每个门只会穿越一次（防环由 RayCaster 负责）。
 
@@ -31,13 +31,14 @@ signal teleported(from: Portal, to: Portal)
 const PORTAL_GROUP := "portals"
 const MIN_NORMAL_COMPONENT := 0.0001  # 贴着平面滑过时不传送，避免抖动
 
-@export var linked_portal: Portal
+## 运行时配对引用：由 pair_id 在进入场景后自动解析，**不要手填、也不会存进关卡文件**。
+## （Godot 的 NodePath 导出属性在这里不可靠：存进去读回来是 null，所以改用编号做唯一来源。）
+var linked_portal: Portal
 @export var pair_id: StringName = &""
 @export var mirror_out: bool = false
 ## true = 只允许从正面（法线反方向）射入；从背面射入会被吞掉
 @export var one_way: bool = false
 @export_range(0.0, 0.9) var energy_cost: float = 0.2
-@export var auto_link: bool = true
 ## 门面长度（沿切向）：整条都能传送
 @export var length: float = 96.0
 ## 法线方向厚度：给“擦着门边飞过”的光留一点容错
@@ -53,19 +54,29 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
-	_apply_shape()
+	apply_shape()
 	if Engine.is_editor_hint():
 		return
-	# 显式配对：把对端也指回来，避免“只有一边认人”的半截状态
-	if linked_portal != null and linked_portal != self:
+	# 场景里的 linked_portal 是 NodePath 导出属性，_ready 时可能还没解析完，
+	# 所以延后一帧再确认配对（否则显式配对会“看起来没生效”）。
+	call_deferred("_ensure_pairing")
+
+
+## 配对收尾：显式链接优先（并让对端指回来），其次按 pair_id；都没有就保持未配对。
+func _ensure_pairing() -> void:
+	if not is_inside_tree():
+		return
+	if linked_portal != null and linked_portal != self and is_instance_valid(linked_portal):
 		if linked_portal.linked_portal == null:
 			linked_portal.linked_portal = self
+			linked_portal.queue_redraw()
+		queue_redraw()
 		return
-	_try_auto_pair()
+	_pair_by_id()
 
 
 ## 让碰撞体跟 length / thickness 保持一致（运行时执行，避免弄脏编辑器里的场景）
-func _apply_shape() -> void:
+func apply_shape() -> void:
 	if Engine.is_editor_hint():
 		return
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
@@ -150,47 +161,34 @@ func on_ray(in_dir: Vector2, _normal: Vector2, hit_pos: Vector2, energy: float) 
 
 # ---------- 配对 ----------
 
-func _try_auto_pair() -> void:
-	if pair_id != &"":
-		_pair_by_id()
-		return
-	if auto_link:
-		_auto_link_nearest()
-
-
+## 只按 pair_id 配对（与两扇门的距离无关）。没有编号就保持未配对，
+## 由 on_ray 在真的被光照到时报警 + 门上画红叉。
 func _pair_by_id() -> void:
+	if pair_id == &"":
+		return
 	var candidates: Array[Portal] = []
+	var siblings := 0
 	for node in get_tree().get_nodes_in_group(PORTAL_GROUP):
 		var other := node as Portal
-		if other == null or other == self or other.pair_id != pair_id:
+		if other == null or other.pair_id != pair_id:
+			continue
+		siblings += 1
+		if other == self:
 			continue
 		if other.is_linked() and other.linked_portal != self:
 			continue
 		candidates.append(other)
+	if siblings > 2:
+		push_warning("传送门编号 \"%s\" 有 %d 扇门，只有最先创建的两扇会配对，其它请换编号。"
+				% [pair_id, siblings])
 	if candidates.is_empty():
 		return  # 不在这里报警：等真的有光线打上来时再提示（on_ray 里）
-	# 按节点路径排序，保证同一份关卡每次运行配到同一扇门
+	# 按实例创建顺序排序，保证同一份关卡每次运行配到同一扇门
 	candidates.sort_custom(func(a: Portal, b: Portal) -> bool:
-		return String(a.get_path()) < String(b.get_path()))
+		return a.get_instance_id() < b.get_instance_id())
 	linked_portal = candidates[0]
 	if linked_portal.linked_portal == null:
 		linked_portal.linked_portal = self
-
-
-func _auto_link_nearest() -> void:
-	var best: Portal = null
-	var best_dist := INF
-	for node in get_tree().get_nodes_in_group(PORTAL_GROUP):
-		var other := node as Portal
-		if other == null or other == self or other.is_linked():
-			continue
-		var dist := global_position.distance_squared_to(other.global_position)
-		if dist < best_dist:
-			best_dist = dist
-			best = other
-	if best != null:
-		linked_portal = best
-		best.linked_portal = self
 
 
 func _warn_once_unlinked() -> void:

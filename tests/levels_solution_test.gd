@@ -66,9 +66,24 @@ func _run_case(case: Dictionary) -> void:
 		await get_tree().physics_frame
 
 	_check("%s（转到 %.0f° 通关）" % [path.get_file(), float(case["deg"])], _completed)
+	if not _completed:
+		_dump_portals(level)
 	level.queue_free()
 	await get_tree().process_frame
 	await get_tree().physics_frame
+
+
+## 失败时的诊断输出：传送门是否配对、编号、朝向
+func _dump_portals(level: Node) -> void:
+	var blocks := level.get_node_or_null("Blocks")
+	if blocks == null:
+		return
+	for child in blocks.get_children():
+		var portal := child as Portal
+		if portal != null:
+			print("    调试 %s: pair_id='%s' linked=%s pos=%s rot=%.3f"
+					% [portal.name, portal.pair_id, portal.linked_portal,
+					portal.position, portal.rotation])
 
 
 func _check(label: String, ok: bool, detail := "") -> void:

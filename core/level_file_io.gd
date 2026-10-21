@@ -373,6 +373,11 @@ static func _diff_overrides(
 	for prop in node.get_property_list():
 		if not _is_storable(prop):
 			continue
+		# 编辑器预览时会禁用关卡相机、停摆关卡根节点；这些不是关卡内容，不能写进文件
+		if prop.name == "enabled" and node is Camera2D:
+			continue
+		if prop.name == "process_mode" and node == level_root:
+			continue
 		var live: Variant = node.get(prop.name)
 		var baseline: Variant = default_node.get(prop.name)
 		if _values_equal(live, baseline):
@@ -411,6 +416,9 @@ static func _collect_connections(level_root: Node) -> Array[Dictionary]:
 static func _is_storable(prop: Dictionary) -> bool:
 	if prop["name"] == "script":
 		return false
+	# 传送门的运行时配对引用不落盘：持久化只认 pair_id（读回来才是可靠的）
+	if prop["name"] == "linked_portal":
+		return false
 	var usage: int = prop["usage"]
 	if usage & PROPERTY_USAGE_STORAGE == 0:
 		return false
@@ -447,6 +455,9 @@ static func _format_value(value: Variant, level_root: Node, ext_map: Dictionary)
 			return _format_float(value)
 		TYPE_STRING:
 			return "\"%s\"" % String(value).c_escape()
+		TYPE_STRING_NAME:
+			# 传送门配对编号等 StringName 属性（Godot 自己写 &"..."）
+			return "&\"%s\"" % String(value).c_escape()
 		TYPE_VECTOR2:
 			return "Vector2(%s, %s)" % [_format_float(value.x), _format_float(value.y)]
 		TYPE_COLOR:

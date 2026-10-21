@@ -8,3 +8,4 @@ chcp 65001 >nul
 call "%~dp0tools\godot.bat" game
 if errorlevel 1 pause
 exit /b %ERRORLEVEL%
+git worktree list

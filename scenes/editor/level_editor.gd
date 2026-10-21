@@ -181,14 +181,30 @@ func delete_selected() -> void:
 		return
 	_push_undo()
 	var node := _selection
+	# 传送门按“一对”删除：只删一扇会留下吞光的坏门
+	var partner: Node2D = null
+	if node is Portal:
+		var linked := (node as Portal).linked_portal
+		if linked != null and is_instance_valid(linked) and _level_root.is_ancestor_of(linked):
+			partner = linked
 	clear_selection()
 	_wire_layer.remove_wires_touching(node)
 	node.free()
+	if partner != null:
+		_wire_layer.remove_wires_touching(partner)
+		partner.free()
 	_update_status()
 
 
 func duplicate_selected() -> void:
 	if _selection == null or _selection.scene_file_path.is_empty():
+		return
+	# 传送门复制 = 复制“一对”：只复制一扇会让副本指回原来的另一半
+	if _selection is Portal:
+		var portal_entry := PaletteData.find_entry_for(_selection.scene_file_path, _selection.name)
+		if portal_entry.is_empty():
+			portal_entry = {"path": _selection.scene_file_path, "key": "portal", "pair_gap": 260.0}
+		spawn_pair(portal_entry, _selection.position + Vector2(GRID_SIZE, GRID_SIZE))
 		return
 	var source := _selection
 	_push_undo()
@@ -240,6 +256,16 @@ func set_selected_property(prop_name: StringName, value: Variant, push_undo := t
 		_push_undo()
 	_selection.set(prop_name, value)
 	_selection.queue_redraw()
+	# 传送门：编号要同步给配对的那扇门，否则玩家会看到两个不一样的号
+	if _selection is Portal:
+		var portal := _selection as Portal
+		if prop_name == &"pair_id":
+			var partner := portal.linked_portal
+			if partner != null and is_instance_valid(partner):
+				partner.pair_id = value
+				partner.queue_redraw()
+		elif prop_name == &"length" or prop_name == &"thickness":
+			portal.apply_shape()
 	if _show_ray_preview:
 		_refresh_ray_preview()
 	_update_status()
@@ -1141,6 +1167,19 @@ func _add_prop_control(grid: GridContainer, prop: Dictionary) -> void:
 			option.item_selected.connect(func(index: int) -> void:
 				set_selected_property(prop_name, index))
 			grid.add_child(option)
+		&"text":
+			var edit := LineEdit.new()
+			edit.text = str(_selection.get(prop_name))
+			edit.placeholder_text = str(prop.get("placeholder", ""))
+			edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var commit := func() -> void:
+				if _selection == null:
+					return
+				if str(_selection.get(prop_name)) != edit.text:
+					set_selected_property(prop_name, StringName(edit.text))
+			edit.text_submitted.connect(func(_t: String) -> void: commit.call())
+			edit.focus_exited.connect(func() -> void: commit.call())
+			grid.add_child(edit)
 
 
 func _configure_prop_spin(spin: SpinBox, prop: Dictionary) -> void:
@@ -1377,7 +1416,53 @@ func _on_palette_pressed(entry: Dictionary) -> void:
 	# 画面中心附近随机偏移，避免每次生成叠在一起
 	var offset := Vector2(randf_range(-2.0, 2.0), randf_range(-2.0, 2.0)) * GRID_SIZE
 	var preset: Dictionary = entry.get("preset", {})
+	# 成对积木（传送门）：一次生成两扇，面对面摆好并自动配对
+	if bool(entry.get("spawn_pair", false)):
+		spawn_pair(entry, VIEW_RECT.get_center() + offset)
+		return
 	spawn_block(entry["path"], VIEW_RECT.get_center() + offset, "", preset, str(entry["key"]))
+
+
+## 成对生成（传送门）：只推一次撤销，返回第一扇门。
+## 第二扇默认旋转 180°（面对面），这样光从 A 正面进、B 正面出时方向保持一致。
+func spawn_pair(entry: Dictionary, world_position: Vector2) -> Node2D:
+	if _level_root == null:
+		return null
+	var scene_path := str(entry.get("path", "res://blocks/portal/portal.tscn"))
+	var entry_key := str(entry.get("key", "portal"))
+	var gap: float = float(entry.get("pair_gap", 260.0))
+	_push_undo()
+	var first := _spawn_block_impl(scene_path, world_position - Vector2(gap * 0.5, 0.0), {}, entry_key)
+	var second := _spawn_block_impl(scene_path, world_position + Vector2(gap * 0.5, 0.0), {}, entry_key)
+	if first == null or second == null:
+		return first if first != null else second
+	second.rotation = PI
+	if first is Portal and second is Portal:
+		var label := _next_pair_label()
+		var portal_a := first as Portal
+		var portal_b := second as Portal
+		portal_a.pair_id = StringName(label)
+		portal_b.pair_id = StringName(label)
+		portal_a.linked_portal = portal_b
+		portal_b.linked_portal = portal_a
+		portal_a.queue_redraw()
+		portal_b.queue_redraw()
+	select(first)
+	_update_status()
+	return first
+
+
+## 下一个可用的配对编号：取现有数字编号的最大值 + 1（与两扇门的距离无关，纯按编号）
+func _next_pair_label() -> String:
+	var highest := 0
+	for node in _blocks_container().get_children():
+		var portal := node as Portal
+		if portal == null:
+			continue
+		var text := String(portal.pair_id)
+		if text.is_valid_int():
+			highest = maxi(highest, text.to_int())
+	return str(highest + 1)
 
 
 func _on_open_file_selected(path: String) -> void:

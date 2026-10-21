@@ -68,7 +68,22 @@ static var _entries: Array[Dictionary] = [
 	},
 	{
 		"key": "portal", "label": "传送门", "category": CATEGORY_OPTICS,
-		"path": "res://blocks/portal/portal.tscn", "size": Vector2(24, 96), "props": [],
+		"path": "res://blocks/portal/portal.tscn", "size": Vector2(24, 96),
+		# 传送门永远成对生成：一次点两个，面对面摆好并自动配对
+		"spawn_pair": true, "pair_gap": 260.0,
+		"props": [
+			{"name": &"pair_id", "label": "配对编号", "kind": &"text"},
+			{"name": &"one_way", "label": "单向", "kind": &"bool"},
+			{"name": &"mirror_out", "label": "镜像出射", "kind": &"bool"},
+			{
+				"name": &"length", "label": "门面长度", "kind": &"float",
+				"min": 16.0, "max": 400.0, "step": 8.0,
+			},
+			{
+				"name": &"thickness", "label": "厚度", "kind": &"float",
+				"min": 2.0, "max": 64.0, "step": 2.0,
+			},
+		],
 	},
 	{
 		"key": "glacier", "label": "冰川", "category": CATEGORY_OPTICS,

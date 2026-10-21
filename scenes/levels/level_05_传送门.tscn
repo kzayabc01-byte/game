@@ -23,12 +23,12 @@ rotation = -0.349
 [node name="PortalA" parent="Blocks" instance=ExtResource("5_portal")]
 position = Vector2(330, 480)
 rotation = 3.1416
-linked_portal = NodePath("../PortalB")
+pair_id = &"1"
 
 [node name="PortalB" parent="Blocks" instance=ExtResource("5_portal")]
 position = Vector2(620, 240)
 rotation = 1.571
-linked_portal = NodePath("../PortalA")
+pair_id = &"1"
 
 [node name="Cocoon" parent="Blocks" instance=ExtResource("4_cocoon")]
 position = Vector2(620, 440)

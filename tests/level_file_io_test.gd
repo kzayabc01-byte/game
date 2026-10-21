@@ -120,14 +120,16 @@ func _run() -> void:
 			"res://scenes/levels/level_07_说明.tscn")
 	_check(draft_errors.has("至少需要一个通关目标"), "缺少通关目标的草稿不能发布")
 
-	# 6. capture/restore 抵消 portal._ready 自动配对副作用
+	# 6. capture/restore 保留传送门的编号配对（不再依赖 _ready 按距离自动配对）
 	var base := (load(LevelFileIO.BASE_SCENE_DEFAULT) as PackedScene).instantiate()
 	var portal1 := (load("res://blocks/portal/portal.tscn") as PackedScene).instantiate() as Node2D
 	portal1.name = "PortalA"
 	portal1.position = Vector2(200, 200)
+	portal1.set("pair_id", &"9")
 	var portal2 := (load("res://blocks/portal/portal.tscn") as PackedScene).instantiate() as Node2D
 	portal2.name = "PortalB"
-	portal2.position = Vector2(400, 200)
+	portal2.position = Vector2(900, 600)
+	portal2.set("pair_id", &"9")
 	base.get_node("Blocks").add_child(portal1)
 	base.get_node("Blocks").add_child(portal2)
 	var captured := LevelFileIO.capture_props(base)
@@ -136,7 +138,9 @@ func _run() -> void:
 	await get_tree().process_frame
 	var paired: bool = portal1.get("linked_portal") != null
 	LevelFileIO.restore_props(base, captured)
-	_check(paired and portal1.get("linked_portal") == null, "capture/restore 抵消 _ready 自动配对")
+	_check(paired and String(portal1.get("pair_id")) == "9"
+			and portal1.get("linked_portal") == portal2,
+			"capture/restore 保留按编号的传送门配对")
 	base.queue_free()
 	await get_tree().process_frame
 

@@ -151,7 +151,6 @@ func _test_pair_id() -> void:
 	var c := Portal.new()
 	c.position = Vector2(60.0, 0.0)   # 离 A 更近，但 pair_id 不同
 	c.pair_id = &"blue"
-	c.auto_link = false
 	add_child(a)
 	add_child(b)
 	add_child(c)
@@ -170,18 +169,48 @@ func _test_pair_id() -> void:
 
 func _test_auto_link() -> void:
 	print("")
-	print("--- 没填 pair_id 时的兜底：最近的同类门 ---")
-	var a := Portal.new()
-	a.position = Vector2(0.0, 0.0)
-	var b := Portal.new()
-	b.position = Vector2(120.0, 0.0)
-	add_child(a)
-	add_child(b)
+	print("--- 配对与距离无关 ---")
+	# 1) 两扇门挨得很近，但没有编号：不应该被自动配对
+	var near_a := Portal.new()
+	near_a.position = Vector2(0.0, 0.0)
+	var near_b := Portal.new()
+	near_b.position = Vector2(40.0, 0.0)
+	add_child(near_a)
+	add_child(near_b)
 	await get_tree().process_frame
-	_check("A 自动连到 B", a.linked_portal == b)
-	_check("B 自动连回 A", b.linked_portal == a)
-	a.queue_free()
-	b.queue_free()
+	_check("挨得近但没编号 → 不配对",
+			near_a.linked_portal == null and near_b.linked_portal == null,
+			"%s / %s" % [near_a.linked_portal, near_b.linked_portal])
+	near_a.queue_free()
+	near_b.queue_free()
+	await get_tree().process_frame
+
+	# 2) 编号相同、相距几千像素：仍然配对
+	var far_a := Portal.new()
+	far_a.position = Vector2(0.0, 0.0)
+	far_a.pair_id = &"far"
+	var far_b := Portal.new()
+	far_b.position = Vector2(2400.0, 1800.0)
+	far_b.pair_id = &"far"
+	add_child(far_a)
+	add_child(far_b)
+	await get_tree().process_frame
+	_check("相距约 3000px 仍按编号配对",
+			far_a.linked_portal == far_b and far_b.linked_portal == far_a,
+			"%s / %s" % [far_a.linked_portal, far_b.linked_portal])
+
+	# 3) 离得再远也不改关系：同编号 + 另一个未编号的近门，仍配原来那扇
+	var near_c := Portal.new()
+	near_c.position = far_a.position + Vector2(30.0, 0.0)
+	add_child(near_c)
+	await get_tree().process_frame
+	_check("新增的近门不会抢走已配对的门",
+			far_a.linked_portal == far_b and near_c.linked_portal == null,
+			"%s / %s" % [far_a.linked_portal, near_c.linked_portal])
+
+	far_a.queue_free()
+	far_b.queue_free()
+	near_c.queue_free()
 	await get_tree().process_frame
 
 
