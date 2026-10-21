@@ -7,8 +7,14 @@ extends Node
 ## 3. 把光照状态同步给每个机关，并交给渲染器绘制
 ## 用法：每个关卡场景放一个本节点即可（level_base 已放好）。
 
+const COVERAGE_STEP_DEGREES := 2
+
 @export var ray_width: float = 3.0
 @export var glow_width: float = 12.0
+
+var full_coverage_enabled := false
+var lit_start_degrees := 0.0
+var lit_end_degrees := 360.0
 
 var _sources: Array[LightSource] = []
 var _receivers: Array[LightReceiver] = []
@@ -47,28 +53,51 @@ func _physics_process(delta: float) -> void:
 	var segment_colors: Array[Array] = []  # 与 segment_sets 一一对应
 	var width_scales: Array[float] = []   # 与 segment_sets 一一对应（凸透镜聚焦后变细）
 	for source in _sources:
-		var traces := RayCaster.trace_all(
-			space,
-			source.global_position,
-			source.get_light_direction(),
-			source.get_light_color(),
-			source.max_bounces
-		)
-		for trace in traces:
-			segment_sets.append(trace.segments)
-			segment_colors.append(trace.segment_colors)
-			width_scales.append(trace.width_scale)
-			for hit in trace.receiver_hits:
-				var receiver := hit.receiver as LightReceiver
-				if receiver == null:
-					continue
-				if not hit_colors.has(receiver):
-					hit_colors[receiver] = []
-				var colors: Array = hit_colors[receiver]
-				if not colors.has(hit.color):
-					colors.append(hit.color)
+		for direction in get_emission_directions(source.get_light_direction()):
+			var traces := RayCaster.trace_all(
+				space,
+				source.global_position,
+				direction,
+				source.get_light_color(),
+				source.max_bounces
+			)
+			for trace in traces:
+				segment_sets.append(trace.segments)
+				segment_colors.append(trace.segment_colors)
+				width_scales.append(trace.width_scale)
+				for hit in trace.receiver_hits:
+					var receiver := hit.receiver as LightReceiver
+					if receiver == null:
+						continue
+					if not hit_colors.has(receiver):
+						hit_colors[receiver] = []
+					var colors: Array = hit_colors[receiver]
+					if not colors.has(hit.color):
+						colors.append(hit.color)
 	_renderer.set_segments(segment_sets, segment_colors, width_scales)
 	_sync_receivers(hit_colors, delta)
+
+
+## 编辑器测试专用；非导出属性不会进入关卡文件。
+func configure_full_coverage(enabled: bool, lit_start: float, lit_end: float) -> void:
+	full_coverage_enabled = enabled
+	lit_start_degrees = clampf(lit_start, 0.0, 360.0)
+	lit_end_degrees = clampf(lit_end, 0.0, 360.0)
+
+
+## 测试光区使用世界方向：正右为 0°，顺时针增加；0°→360° 为整圈。
+func get_emission_directions(forward: Vector2) -> Array[Vector2]:
+	var directions: Array[Vector2] = []
+	if not full_coverage_enabled:
+		directions.append(forward)
+		return directions
+	var span := fposmod(lit_end_degrees - lit_start_degrees, 360.0)
+	if is_zero_approx(span) and not is_equal_approx(lit_start_degrees, lit_end_degrees):
+		span = 360.0
+	for index in range(ceili(span / float(COVERAGE_STEP_DEGREES))):
+		var angle_degrees := lit_start_degrees + float(index * COVERAGE_STEP_DEGREES)
+		directions.append(Vector2.RIGHT.rotated(deg_to_rad(angle_degrees)))
+	return directions
 
 
 func _sync_receivers(hit_colors: Dictionary, delta: float) -> void:

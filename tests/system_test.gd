@@ -47,6 +47,38 @@ func _ready() -> void:
 	_check("分束命中下方目标", down_target.is_lit())
 	_check("两个目标同时被点亮", up_target.is_lit() and down_target.is_lit())
 
+	var rear_target := _make_probe(Vector2(-150, 0))
+	add_child(rear_target)
+	system.configure_full_coverage(true, 0.0, 360.0)
+	var all_directions := system.get_emission_directions(Vector2.RIGHT)
+	_check("有光区域覆盖整圈时按 2° 发射 180 束",
+			all_directions.size() == 180
+			and all_directions[0].is_equal_approx(Vector2.RIGHT)
+			and all_directions[1].is_equal_approx(Vector2.RIGHT.rotated(deg_to_rad(2.0)))
+			and all_directions[179].is_equal_approx(Vector2.RIGHT.rotated(deg_to_rad(358.0))))
+	await _wait_frames(3)
+	_check("180 束参与实际光路计算", rear_target.is_lit())
+	system.configure_full_coverage(true, 150.0, 210.0)
+	await _wait_frames(3)
+	_check("背面处于有光区域时能点亮机关", rear_target.is_lit()
+			and system.get_emission_directions(Vector2.RIGHT).size() == 30)
+	system.configure_full_coverage(true, 180.0, 180.0)
+	await _wait_frames(3)
+	_check("起止角相同会停止发光且熄灭机关",
+			system.get_emission_directions(Vector2.RIGHT).is_empty()
+			and not rear_target.is_lit())
+	system.configure_full_coverage(true, 330.0, 30.0)
+	await _wait_frames(3)
+	_check("背面不在跨 0° 的有光区域时机关熄灭", not rear_target.is_lit()
+			and system.get_emission_directions(Vector2.RIGHT).size() == 30)
+	system.configure_full_coverage(true, 45.0, 46.0)
+	_check("不足 2° 的有光区域仍发射一束",
+			system.get_emission_directions(Vector2.RIGHT).size() == 1)
+	system.configure_full_coverage(false, 0.0, 0.0)
+	await _wait_frames(3)
+	_check("关闭覆盖后恢复单束光", not rear_target.is_lit()
+			and system.get_emission_directions(Vector2.RIGHT).size() == 1)
+
 	print("")
 	if _failed == 0:
 		print("TEST RESULT: PASS")
