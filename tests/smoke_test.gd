@@ -28,6 +28,7 @@ func _run_test() -> void:
 		return
 
 	print("TEST: 光源初始角度 = %.1f°（期望 0°）" % rad_to_deg(source.rotation))
+	var angle_label_ok := source.get_angle_label_text() == "0°"
 	print("TEST: 第一阶段——初始直射被墙挡住")
 	for _frame in 30:
 		await get_tree().physics_frame
@@ -35,12 +36,14 @@ func _run_test() -> void:
 
 	print("TEST: 第二阶段——光源转到 -45°，经镜面反射")
 	source.rotation = deg_to_rad(-45.0)
+	angle_label_ok = angle_label_ok and source.get_angle_label_text() == "315°"
 	for _frame in 60:
 		await get_tree().physics_frame
 	print("TEST: 蚕茧是否点亮（期望 true）: %s" % cocoon.is_lit())
 	print("TEST: 关卡管理器是否收到胜利（期望 true）: %s" % _level_completed)
+	print("TEST: 光源角度读数遵循正右 0°（期望 true）: %s" % angle_label_ok)
 
-	if cocoon.is_lit() and _level_completed:
+	if cocoon.is_lit() and _level_completed and angle_label_ok:
 		print("TEST RESULT: PASS")
 		get_tree().quit(0)
 	else:

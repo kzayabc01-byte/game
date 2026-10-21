@@ -4,7 +4,7 @@ extends Node2D
 
 ## 初始点（光源）：玩家按住拖拽旋转；Q/E 步进旋转；Shift+Q/E 精细旋转。
 ## 直接拖进关卡即可，自动加入 light_sources 组。
-## 在编辑器里旋转本节点 = 设置光线的初始方向。
+## 在编辑器里旋转本节点 = 设置光线的初始方向；读数以世界正右为 0°。
 
 signal direction_changed(angle: float)
 
@@ -13,6 +13,8 @@ const RESETTABLE_GROUP := "resettables"
 
 const GRAB_RADIUS := 30.0   # 多近可以按住拖拽
 const BASE_RADIUS := 16.0   # 占位外观半径
+const ANGLE_FONT_SIZE := 12
+const ANGLE_LABEL_OFFSET := Vector2(0.0, -36.0)
 
 @export var max_bounces: int = 12
 @export var rotate_step_degrees: float = 5.0
@@ -30,6 +32,12 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_initial_rotation = rotation
+	set_notify_transform(true)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_TRANSFORM_CHANGED:
+		queue_redraw()
 
 
 ## 光线系统从这里取光线方向
@@ -40,6 +48,16 @@ func get_light_direction() -> Vector2:
 ## 光线系统从这里取光线颜色
 func get_light_color() -> Color:
 	return light_color
+
+
+## 世界正右为 0°；屏幕顺时针方向递增。
+func get_world_angle_degrees() -> float:
+	return wrapf(rad_to_deg(global_rotation), 0.0, 360.0)
+
+
+func get_angle_label_text() -> String:
+	var degrees := posmod(roundi(get_world_angle_degrees()), 360)
+	return "%d°" % degrees
 
 
 func reset_state() -> void:
@@ -95,3 +113,22 @@ func _draw() -> void:
 	draw_arc(Vector2.ZERO, BASE_RADIUS, 0.0, TAU, 24, Color(0.4, 0.42, 0.5), 2.0)
 	draw_circle(Vector2.ZERO, BASE_RADIUS * 0.4, light_color)
 	draw_line(Vector2.ZERO, Vector2.RIGHT * (BASE_RADIUS + 12.0), light_color, 4.0)
+	var font := ThemeDB.fallback_font
+	if font == null:
+		return
+	var label_text := get_angle_label_text()
+	var text_size := font.get_string_size(
+		label_text, HORIZONTAL_ALIGNMENT_LEFT, -1, ANGLE_FONT_SIZE
+	)
+	# 抵消光源旋转，避免角度读数随箭头一起倒转。
+	draw_set_transform(ANGLE_LABEL_OFFSET, -global_rotation, Vector2.ONE)
+	var plate := Rect2(
+		Vector2(-text_size.x * 0.5 - 5.0, -text_size.y * 0.5 - 3.0),
+		text_size + Vector2(10.0, 6.0)
+	)
+	draw_rect(plate, Color(0.05, 0.06, 0.08, 0.82))
+	draw_string(
+		font, Vector2(-text_size.x * 0.5, text_size.y * 0.34), label_text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, ANGLE_FONT_SIZE, Color(1.0, 0.93, 0.72)
+	)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

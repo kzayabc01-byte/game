@@ -9,6 +9,7 @@ const SWITCH_SCENE := "res://blocks/trigger_switch/trigger_switch.tscn"
 const MIRROR_SCENE := "res://blocks/mirror/mirror.tscn"
 const REFRACT_SCENE := "res://blocks/refract_surface/refract_surface.tscn"
 const LIGHT_SOURCE_SCENE := "res://blocks/light_source/light_source.tscn"
+const STONE_SCENE := "res://blocks/stone_block/stone_block.tscn"
 
 var _failures: Array[String] = []
 var _editor: LevelEditor = null
@@ -55,6 +56,13 @@ func _run() -> void:
 			and _editor.get_node_or_null("World/Gizmo") != null
 			and _editor.get_node_or_null("EditorCamera") != null
 			and _editor.get_node_or_null("UI") != null)
+	var toolbar := _editor.get_node("UI").get_child(0) as PanelContainer
+	var toolbar_rows := toolbar.get_child(0) as VBoxContainer
+	var top_row := toolbar_rows.get_child(0) as HBoxContainer
+	var coverage_row := toolbar_rows.get_child(1) as HBoxContainer
+	_check("两行工具栏在关卡视口宽度内",
+			top_row.get_combined_minimum_size().x <= _editor.get_viewport_rect().size.x
+			and coverage_row.get_combined_minimum_size().x <= _editor.get_viewport_rect().size.x)
 
 	# 2. new_level 中和（六步管线）
 	var root := _editor.get_level_root()
@@ -115,13 +123,25 @@ func _run() -> void:
 	var light_source := _editor.spawn_block(
 			LIGHT_SOURCE_SCENE, Vector2(720.0, 120.0)) as LightSource
 	var source_rotation_before := light_source.rotation
+	_check("光源正右显示 0°", light_source.get_angle_label_text() == "0°")
+	light_source.rotation = PI * 0.5
+	_check("光源正下显示 90°", light_source.get_angle_label_text() == "90°")
+	light_source.rotation = PI
+	_check("光源正左显示 180°", light_source.get_angle_label_text() == "180°")
+	light_source.rotation = -PI * 0.5
+	_check("光源正上显示 270°", light_source.get_angle_label_text() == "270°")
+	light_source.rotation = source_rotation_before
 	var turn_source_button := _find_base_button(_editor, "右转")
 	_check("光源检查器提供快捷旋转", turn_source_button != null)
 	if turn_source_button != null:
 		turn_source_button.pressed.emit()
 	_check("快捷旋转光源会立即改变方向",
 			light_source.rotation > source_rotation_before
-			and light_source.get_light_direction().y > 0.0)
+			and light_source.get_light_direction().y > 0.0
+			and light_source.get_angle_label_text() == "5°")
+	var source_rotation_spin := _editor.get("_spin_rotation") as SpinBox
+	_check("光源面板与旁边的小字使用同一角度",
+			source_rotation_spin != null and is_equal_approx(source_rotation_spin.value, 5.0))
 
 	# 6. 电线连线
 	var trigger := _editor.spawn_block(SWITCH_SCENE, Vector2(300, 300))
@@ -186,7 +206,23 @@ func _run() -> void:
 	_editor.set_wire_property(0, &"duration", 0.01)
 	var validation_text := _editor.serialize()
 	var validation_toggle := _find_base_button(_editor, "实时验证")
+	var coverage_toggle := _find_base_button(_editor, "全光线覆盖")
+	var light_range_button := _find_base_button(_editor, "有光 0°→360°")
 	_check("工具栏提供实时验证", validation_toggle != null)
+	_check("全光线覆盖只在测试模式可开启",
+			coverage_toggle != null and coverage_toggle.disabled)
+	if light_range_button != null:
+		light_range_button.pressed.emit()
+		var light_start_spin := _editor.get("_coverage_start_spin") as SpinBox
+		var light_end_spin := _editor.get("_coverage_end_spin") as SpinBox
+		var light_dialog := _editor.get("_coverage_dialog") as ConfirmationDialog
+		light_start_spin.value = 330.0
+		light_end_spin.value = 30.0
+		light_dialog.confirmed.emit()
+		light_dialog.hide()
+	_check("测试前可设置有光角度",
+			light_range_button != null
+			and light_range_button.text == "有光 330°→30°")
 	if validation_toggle != null:
 		validation_toggle.set_pressed_no_signal(true)
 		validation_toggle.toggled.emit(true)
@@ -200,11 +236,38 @@ func _run() -> void:
 		await get_tree().physics_frame
 	_check("实时验证中触发机关会驱动目标",
 			mirror.position.distance_to(Vector2(480, 252)) < 1.0)
+	if coverage_toggle != null:
+		coverage_toggle.set_pressed_no_signal(true)
+		coverage_toggle.toggled.emit(true)
+	var light_system := root.get_node("LightSystem") as LightSystem
+	var lit_directions := light_system.get_emission_directions(Vector2.RIGHT)
+	_check("实时验证只在跨 0° 的有光区域发射光线",
+			coverage_toggle != null and not coverage_toggle.disabled
+			and light_system.full_coverage_enabled
+			and lit_directions.size() == 30
+			and lit_directions[0].is_equal_approx(
+				Vector2.RIGHT.rotated(deg_to_rad(330.0)))
+			and lit_directions[29].is_equal_approx(
+				Vector2.RIGHT.rotated(deg_to_rad(28.0))))
+	_check("有光区域固定以正右为 0°，不随光源旋转",
+			light_system.get_emission_directions(Vector2.DOWN)[0].is_equal_approx(
+				Vector2.RIGHT.rotated(deg_to_rad(330.0))))
+	_check("覆盖开启后不能改有光区域",
+			not _editor.set_full_coverage_light_range(0.0, 90.0))
+	for _frame in range(2):
+		await get_tree().physics_frame
+	var runtime_renderer := light_system.get_node("RayRenderer") as LightRayRenderer
+	var runtime_segments: Array = runtime_renderer.get("_segment_sets")
+	_check("有光区域光线实际参与物理光路绘制", runtime_segments.size() >= 30)
 	if validation_toggle != null:
 		validation_toggle.set_pressed_no_signal(false)
 		validation_toggle.toggled.emit(false)
 	_check("结束实时验证会回到编辑模式", not _editor.is_validation_mode())
 	root = _editor.get_level_root()
+	_check("结束验证自动关闭全光线覆盖",
+			coverage_toggle != null and coverage_toggle.disabled
+			and not coverage_toggle.button_pressed
+			and not (root.get_node("LightSystem") as LightSystem).full_coverage_enabled)
 	trigger = root.get_node("Blocks/TriggerSwitch") as Node2D
 	mirror = root.get_node("Blocks/Mirror") as Node2D
 	link = root.get_node_or_null("Blocks/Wire") as ActionLink
@@ -213,6 +276,96 @@ func _run() -> void:
 	_check("结束实时验证恢复设计快照",
 			_normalize_root_name(validation_text_after) == _normalize_root_name(validation_text)
 			and mirror.position == Vector2(416, 300))
+
+	# 试玩留在编辑器内：运行中能改已有块和电线，结束只保留主动编辑。
+	var play_button := _find_base_button(_editor, "试玩")
+	_check("工具栏提供可编辑试玩", play_button != null)
+	var source_angle_before := light_source.rotation
+	var wire_duration_before := link.duration
+	if play_button != null:
+		play_button.pressed.emit()
+	_check("试玩启动后关卡运行且编辑器仍在场",
+			_editor.is_playtest_mode()
+			and root.process_mode == Node.PROCESS_MODE_INHERIT
+			and play_button != null and play_button.text == "结束试玩")
+	if coverage_toggle != null:
+		coverage_toggle.set_pressed_no_signal(true)
+		coverage_toggle.toggled.emit(true)
+	light_system = root.get_node("LightSystem") as LightSystem
+	_check("试玩也可开启全光线覆盖",
+			light_system.full_coverage_enabled
+			and light_system.get_emission_directions(Vector2.RIGHT).size() == 30)
+	if coverage_toggle != null:
+		coverage_toggle.set_pressed_no_signal(false)
+		coverage_toggle.toggled.emit(false)
+	(trigger as TriggerSwitch).apply_lit(true)
+	for _frame in range(30):
+		if mirror.position.distance_to(Vector2(480, 252)) < 1.0:
+			break
+		await get_tree().physics_frame
+	_check("试玩期间电线机关仍会运行",
+			mirror.position.distance_to(Vector2(480, 252)) < 1.0)
+	_editor.call("_press_world", light_source.global_position)
+	_check("试玩中点击光源可进入拖动瞄准",
+			_editor.get("_playtest_aim_source") == light_source)
+	_editor.call("_aim_playtest_source_at", light_source.global_position + Vector2.DOWN * 100.0)
+	_check("试玩拖动瞄准会实时转动光源",
+			light_source.get_light_direction().is_equal_approx(Vector2.DOWN)
+			and light_source.get_angle_label_text() == "90°")
+	var aiming_spin := _editor.get("_spin_rotation") as SpinBox
+	_check("试玩瞄准时检查器角度同步更新",
+			aiming_spin != null and is_equal_approx(aiming_spin.value, 90.0))
+	_editor.call("_release_world", light_source.global_position)
+	_editor.select(light_source)
+	var playtest_rotation_spin := _editor.get("_spin_rotation") as SpinBox
+	if playtest_rotation_spin != null:
+		playtest_rotation_spin.value = rad_to_deg(source_angle_before) + 21.0
+	_check("试玩中检查器可立即旋转已有光源",
+			absf(light_source.rotation - source_angle_before - deg_to_rad(21.0)) < 0.01)
+	_editor.set_wire_property(0, &"duration", 0.25)
+	_check("试玩中可修改已有电线", is_equal_approx(link.duration, 0.25))
+	_check("试玩中禁止增删关卡结构",
+			_editor.spawn_block(WALL_SCENE, Vector2(32, 32)) == null
+			and not _editor.connect_wire(trigger, light_source))
+	if play_button != null:
+		play_button.pressed.emit()
+	_check("结束试玩回到编辑状态", not _editor.is_playtest_mode())
+	root = _editor.get_level_root()
+	mirror = root.get_node("Blocks/Mirror") as Node2D
+	link = root.get_node_or_null("Blocks/Wire") as ActionLink
+	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
+	_check("试玩只保留设计改动，不保留机关临时位移",
+			absf(light_source.rotation - source_angle_before - deg_to_rad(21.0)) < 0.01
+			and is_equal_approx(link.duration, 0.25)
+			and mirror.position == Vector2(416, 300))
+	_check("试玩改动可整体撤销", _editor.undo())
+	root = _editor.get_level_root()
+	mirror = root.get_node("Blocks/Mirror") as Node2D
+	link = root.get_node_or_null("Blocks/Wire") as ActionLink
+	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
+	_check("撤销试玩恢复原有设计",
+			is_equal_approx(light_source.rotation, source_angle_before)
+			and is_equal_approx(link.duration, wire_duration_before)
+			and mirror.position == Vector2(416, 300))
+	var stone := _editor.spawn_block(STONE_SCENE, Vector2(900, 100)) as StoneBlock
+	_check("试玩重力测试石块已生成", stone != null)
+	_editor.set_playtest_mode(true)
+	for _frame in range(12):
+		await get_tree().physics_frame
+	_check("试玩中的石块会受重力下落", stone.position.y > 100.0)
+	_editor.select(stone)
+	var stone_x_spin := _editor.get("_spin_x") as SpinBox
+	if stone_x_spin != null:
+		stone_x_spin.value = 920.0
+	_editor.set_playtest_mode(false)
+	root = _editor.get_level_root()
+	stone = root.get_node_or_null("Blocks/StoneBlock") as StoneBlock
+	_check("只改石块 X 不会保存重力造成的 Y 偏移",
+			stone != null and stone.position == Vector2(920, 100))
+	_editor.select(stone)
+	_editor.delete_selected()
+	root = _editor.get_level_root()
+	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
 
 	# 删除积木走真实按钮，并确认不会重现“释放正在发信号按钮”的对象锁错误。
 	_editor.select(light_source)

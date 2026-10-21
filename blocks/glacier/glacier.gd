@@ -2,11 +2,13 @@
 class_name Glacier
 extends RefractSurface
 
-## 冰川：会折射光线的冰，但被持续照射会融化；融化后光线直接穿过。碰撞层 4。
+## 冰川：会折射光线的冰，但被**足够强的光**持续照射才会融化；融化后光线直接穿过。碰撞层 4。
 ##
 ## 玩法：冰是“会消失的折射体”——想清楚先融哪一块，因为融化会永久改变光路。
-## 能量越高融得越快（所以凹透镜分出来的弱光几乎融不动），按 R 重置会复原。
-## 光照是否“持续”由光线系统每帧调用 on_ray() 决定，断光就暂停融化。
+## 关键：`required_energy`（默认 1.5）是能量门槛。
+##   光源 1.0 的直接光融不动；只有经过**凸透镜**增强（×1.8）的光才够；
+##   凹透镜分出来的弱光（×0.6）永远融不动 —— 聚光与分光因此成为取舍。
+## 按 R 重置会复原；断光就暂停融化。
 
 signal melted
 
@@ -14,6 +16,8 @@ const RESETTABLE_GROUP := "resettables"
 
 @export var melt_seconds: float = 3.0
 @export_range(0.1, 3.0) var melt_efficiency: float = 1.0
+## 融化所需的入射能量下限：低于它的光只会穿过/折射，不会融化
+@export var required_energy: float = 1.5
 
 var _progress: float = 0.0
 var _hit_frame: int = -1
@@ -45,9 +49,17 @@ func _physics_process(delta: float) -> void:
 		return
 	if Engine.get_physics_frames() - _hit_frame > 2:
 		return  # 连续两帧没被照到：融化暂停
+	if _hit_energy < required_energy:
+		return  # 能量不够（比如没经过凸透镜）：不融化，只透光
 	_progress += delta * _hit_energy * melt_efficiency / maxf(melt_seconds, 0.01)
 	if _progress >= 1.0:
 		_melt()
+
+
+## 当前是否“被照亮但能量不足”（给外观提示和测试用）
+func is_underpowered() -> bool:
+	return not _melted and Engine.get_physics_frames() - _hit_frame <= 2 \
+			and _hit_energy < required_energy
 
 
 ## 当前融化进度（0..1），给测试和 UI 用
@@ -106,3 +118,11 @@ func _draw() -> void:
 	for index in cracks:
 		var offset := Vector2(-half.x + size.x * (float(index) + 0.5) / maxf(float(cracks), 1.0), -half.y)
 		draw_line(offset, offset + Vector2(size.x * 0.15, size.y * 0.45), Color(0.95, 1.0, 1.0, 0.7), 1.5)
+
+	# 被照亮但能量不够：画一圈橙色警示弧（提示“要用凸透镜聚光”）
+	if is_underpowered():
+		var radius: float = maxf(half.x, half.y) + 6.0
+		for index in 3:
+			var start := TAU * float(index) / 3.0
+			draw_arc(Vector2.ZERO, radius, start, start + TAU / 6.0, 10,
+					Color(1.0, 0.68, 0.25, 0.9), 2.5)

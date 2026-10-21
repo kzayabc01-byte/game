@@ -28,6 +28,7 @@ const DEFAULT_MAX_RAYS := 32    # 分光后光线总数的安全上限，防止�
 const DEFAULT_MAX_SEGMENTS := 32  # 单条光源的总段数预算（trace_multi 按段扣）
 const DEFAULT_MAX_SPLIT := 8    # 单次表面命中最多生成多少条子光线（防分束爆炸）
 const MIN_ENERGY := 0.15        # 低于此能量的光线直接丢弃（契约：光源 1.0）
+const MAX_ENERGY := 4.0         # 能量上限（凸透镜可以超过 1.0，但不能无限叠）
 const BOUNCE_OFFSET := 0.5      # 续接后把起点推出表面一点，避免再次命中自己
 const SCAN_STEP := 0.1          # 收集接收区时沿光线前进的最小步长
 
@@ -44,6 +45,8 @@ class LightTrace:
 	var segments: PackedVector2Array = PackedVector2Array()
 	var segment_colors: Array[Color] = []  # segment_colors[i] = segments[i]→segments[i+1] 的颜色
 	var receiver_hits: Array[ReceiverHit] = []
+	var width_scale: float = 1.0          # 光柱宽度倍数（凸透镜聚焦后变细）
+	var energy: float = 1.0               # 这段光路的能量（给 UI / 调试用）
 
 
 class _PendingRay:
@@ -52,6 +55,7 @@ class _PendingRay:
 	var direction: Vector2
 	var color: Color = Color.WHITE
 	var energy: float = 1.0
+	var width_scale: float = 1.0
 	var bounces_left: int = 0
 	var length_left: float = 0.0
 	var segments: PackedVector2Array = PackedVector2Array()
@@ -205,11 +209,12 @@ static func _spawn_from_surface(
 			continue
 		var out_color: Color = out.get("color", ray.color)  # 契约扩展字段：变色机关用
 		var out_origin: Vector2 = out.get("origin", hit_pos)
-		# 传送门会在出射光线里标 teleport：这里必须断成两份折线，
-		# 否则渲染器会把“进 A”和“出 B”连成一条穿过整个场景的直线。
-		var breaks_path := bool(out.get("teleport", false))
+		var out_width: float = ray.width_scale * float(out.get("width", 1.0))
+		# 传送门标 teleport、凸透镜标 break：都要在这里断成两份折线，
+		# 否则渲染器会把“进 A”和“出 B”连成一条穿过整个场景的直线 / 宽度无法变化。
+		var breaks_path := bool(out.get("teleport", false)) or bool(out.get("break", false))
 		queue.append(_continue_ray(ray, out_origin, out_dir, out_color, out_energy,
-				per_segment or breaks_path))
+				per_segment or breaks_path, out_width))
 		spawned += 1
 
 
@@ -221,13 +226,15 @@ static func _continue_ray(
 	direction: Vector2,
 	color: Color,
 	energy: float,
-	fresh: bool
+	fresh: bool,
+	width_scale: float = -1.0
 ) -> _PendingRay:
 	var next := _PendingRay.new()
 	next.origin = origin
 	next.direction = direction.normalized()
 	next.color = color
 	next.energy = energy
+	next.width_scale = ray.width_scale if width_scale < 0.0 else width_scale
 	next.bounces_left = ray.bounces_left - 1
 	next.length_left = ray.length_left
 	next.visited = ray.visited.duplicate()
@@ -247,6 +254,8 @@ static func _finish_ray(traces: Array[LightTrace], ray: _PendingRay, per_segment
 	trace.segments = ray.segments
 	trace.segment_colors = ray.segment_colors
 	trace.receiver_hits = ray.hits
+	trace.width_scale = ray.width_scale
+	trace.energy = ray.energy
 	traces.append(trace)
 
 

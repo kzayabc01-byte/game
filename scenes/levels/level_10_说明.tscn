@@ -1,0 +1,36 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/trigger_switch/trigger_switch.tscn" id="2_trigger_switch"]
+[ext_resource type="PackedScene" path="res://blocks/pressure_sensor/pressure_sensor.tscn" id="3_pressure_sensor"]
+[ext_resource type="PackedScene" path="res://blocks/action_link/action_link.tscn" id="4_action_link"]
+[ext_resource type="PackedScene" path="res://blocks/stone_block/stone_block.tscn" id="5_stone_block"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="6_light_source"]
+[ext_resource type="PackedScene" path="res://blocks/wall/wall.tscn" id="7_wall"]
+
+[node name="Level10" instance=ExtResource("1_base")]
+
+[node name="TriggerSwitch" parent="Blocks" instance=ExtResource("2_trigger_switch")]
+position = Vector2(576, 128)
+scale = Vector2(1.31, 2.01)
+[node name="PressureSensor" parent="Blocks" instance=ExtResource("3_pressure_sensor")]
+position = Vector2(608, 352)
+[node name="Wire" parent="Blocks" instance=ExtResource("4_action_link")]
+target_node = NodePath("../PressureSensor")
+[node name="StoneBlock" parent="Blocks" instance=ExtResource("5_stone_block")]
+position = Vector2(608, 288)
+scale = Vector2(0.53, 0.64)
+[node name="TriggerSwitch2" parent="Blocks" instance=ExtResource("2_trigger_switch")]
+position = Vector2(352, 160)
+[node name="Wire2" parent="Blocks" instance=ExtResource("4_action_link")]
+target_node = NodePath("../TriggerSwitch")
+[node name="LightSource" parent="Blocks" instance=ExtResource("6_light_source")]
+position = Vector2(288, 352)
+[node name="StoneBlock2" parent="Blocks" instance=ExtResource("5_stone_block")]
+position = Vector2(768, 256)
+[node name="Wall" parent="Blocks" instance=ExtResource("7_wall")]
+position = Vector2(736, 352)
+scale = Vector2(2.67, 1.89)
+
+[connection signal="active_changed" from="Blocks/TriggerSwitch" to="Blocks/Wire" method="_on_signal"]
+[connection signal="active_changed" from="Blocks/TriggerSwitch2" to="Blocks/Wire2" method="_on_signal"]

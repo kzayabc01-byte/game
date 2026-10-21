@@ -153,7 +153,9 @@ func _classify_optical(folder: String, node: Node) -> void:
 		return
 
 	if node is Glacier:
-		_ok(folder, "冰川（折射 + 可融化） · 层 4")
+		_ok(folder, "冰川（折射 + 可融化，需要能量 ≥ %.1f） · 层 4" % (node as Glacier).required_energy)
+	elif node is ConvexLens:
+		_ok(folder, "凸透镜（聚能 ×%.1f） · 层 4" % (node as ConvexLens).focus_gain)
 	elif node is ConcaveLens:
 		_ok(folder, "凹透镜（分 %d 束） · 层 4" % (node as ConcaveLens).split_count)
 	elif node is RefractSurface:
