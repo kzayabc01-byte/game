@@ -1,17 +1,17 @@
-[gd_scene load_steps=2 format=3 uid="uid://bsl5j1c8sg5xw"]
+[gd_scene format=3 uid="uid://bsl5j1c8sg5xw"]
 
-[ext_resource type="Script" uid="uid://bavcqr8jivsqe" path="res://scenes/main/main.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://bavcqr8jivsqe" path="res://scenes/LevelSelectPage/LevelSelectPage.gd" id="1_f7scu"]
 
-[node name="MainMenu" type="Control"]
+[node name="LevelSelectPage" type="Control" unique_id=2074216423]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1_script")
+script = ExtResource("1_f7scu")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Background" type="ColorRect" parent="." unique_id=2127751276]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -20,7 +20,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.07, 0.08, 0.11, 1)
 
-[node name="Title" type="Label" parent="."]
+[node name="Title" type="Label" parent="." unique_id=52698750]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -33,7 +33,7 @@ text = "光线游戏"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Subtitle" type="Label" parent="."]
+[node name="Subtitle" type="Label" parent="." unique_id=99451622]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
@@ -45,7 +45,7 @@ theme_override_font_sizes/font_size = 20
 text = "转动光源，穿过机关，点亮蚕茧"
 horizontal_alignment = 1
 
-[node name="LevelList" type="VBoxContainer" parent="."]
+[node name="LevelList" type="VBoxContainer" parent="." unique_id=933791395]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 8
@@ -61,7 +61,7 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 12
 
-[node name="StatusLabel" type="Label" parent="."]
+[node name="StatusLabel" type="Label" parent="." unique_id=1101465658]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 12
@@ -76,7 +76,7 @@ theme_override_colors/font_color = Color(0.65, 0.7, 0.78, 1)
 theme_override_font_sizes/font_size = 16
 horizontal_alignment = 1
 
-[node name="QuitButton" type="Button" parent="."]
+[node name="QuitButton" type="Button" parent="." unique_id=151320412]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 12
