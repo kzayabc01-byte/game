@@ -1,0 +1,212 @@
+[gd_scene load_steps=4 format=3]
+
+[sub_resource type="Gradient" id="Gradient_background"]
+colors = PackedColorArray(0.91, 0.88, 0.82, 1, 0.91, 0.88, 0.82, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_background"]
+gradient = SubResource("Gradient_background")
+width = 2
+height = 2
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
+
+[node name="LevelSelectMap" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+editor_description = "正式关卡选择地图。基础排版以 1152×648 为参考；章节切换和场景跳转待接入。"
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("GradientTexture2D_background")
+expand_mode = 1
+stretch_mode = 6
+editor_description = "当前为米色占位背景，可在 Texture 中替换成正式背景图片。"
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 0
+offset_left = 64.0
+offset_top = 48.0
+offset_right = 384.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.17, 0.18, 0.18, 1)
+theme_override_font_sizes/font_size = 44
+text = "选择关卡"
+vertical_alignment = 1
+
+[node name="BackButton" type="Button" parent="."]
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -168.0
+offset_top = 52.0
+offset_right = -64.0
+offset_bottom = 100.0
+grow_horizontal = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.17, 0.18, 0.18, 1)
+theme_override_colors/font_hover_color = Color(0.75, 0.43, 0.34, 1)
+theme_override_colors/font_pressed_color = Color(0.43, 0.28, 0.24, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+text = "返回"
+flat = true
+
+[node name="MapArea" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 96.0
+offset_top = 168.0
+offset_right = -96.0
+offset_bottom = -144.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Chapter01" type="Control" parent="MapArea"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Connections" type="Line2D" parent="MapArea/Chapter01"]
+width = 1.5
+default_color = Color(0.24, 0.25, 0.25, 0.45)
+antialiased = true
+editor_description = "第一章连接线。摆好入口后，在 Points 中设置各连接点。"
+
+[node name="Markers" type="Control" parent="MapArea/Chapter01"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+editor_description = "在这里实例化 LevelMarker.tscn，摆放第一章的关卡入口。"
+
+[node name="Chapter02" type="Control" parent="MapArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Connections" type="Line2D" parent="MapArea/Chapter02"]
+width = 1.5
+default_color = Color(0.24, 0.25, 0.25, 0.45)
+antialiased = true
+editor_description = "第二章连接线。"
+
+[node name="Markers" type="Control" parent="MapArea/Chapter02"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+editor_description = "第二章关卡入口。编辑时先隐藏其他章节，再显示 Chapter02。"
+
+[node name="Chapter03" type="Control" parent="MapArea"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Connections" type="Line2D" parent="MapArea/Chapter03"]
+width = 1.5
+default_color = Color(0.24, 0.25, 0.25, 0.45)
+antialiased = true
+editor_description = "第三章连接线。"
+
+[node name="Markers" type="Control" parent="MapArea/Chapter03"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+editor_description = "第三章关卡入口。编辑时先隐藏其他章节，再显示 Chapter03。"
+
+[node name="ChapterButtons" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -270.0
+offset_top = -100.0
+offset_right = 270.0
+offset_bottom = -52.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 32
+alignment = 1
+
+[node name="Chapter01Button" type="Button" parent="ChapterButtons"]
+custom_minimum_size = Vector2(132, 48)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.17, 0.18, 0.18, 1)
+theme_override_colors/font_hover_color = Color(0.75, 0.43, 0.34, 1)
+theme_override_colors/font_pressed_color = Color(0.43, 0.28, 0.24, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+text = "第一章"
+flat = true
+
+[node name="Chapter02Button" type="Button" parent="ChapterButtons"]
+custom_minimum_size = Vector2(132, 48)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.43, 0.44, 0.43, 1)
+theme_override_colors/font_hover_color = Color(0.75, 0.43, 0.34, 1)
+theme_override_colors/font_pressed_color = Color(0.43, 0.28, 0.24, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+text = "第二章"
+flat = true
+
+[node name="Chapter03Button" type="Button" parent="ChapterButtons"]
+custom_minimum_size = Vector2(132, 48)
+layout_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.43, 0.44, 0.43, 1)
+theme_override_colors/font_hover_color = Color(0.75, 0.43, 0.34, 1)
+theme_override_colors/font_pressed_color = Color(0.43, 0.28, 0.24, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+text = "第三章"
+flat = true

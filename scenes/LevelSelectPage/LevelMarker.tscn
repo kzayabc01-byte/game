@@ -1,0 +1,91 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
+
+[node name="LevelMarker" type="Control"]
+custom_minimum_size = Vector2(96, 160)
+layout_mode = 0
+offset_right = 96.0
+offset_bottom = 160.0
+mouse_filter = 2
+
+[node name="HitButton" type="Button" parent="."]
+layout_mode = 0
+offset_right = 96.0
+offset_bottom = 96.0
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
+theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
+flat = true
+
+[node name="Visual" type="Control" parent="HitButton"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+pivot_offset = Vector2(48, 48)
+mouse_filter = 2
+
+[node name="Ring" type="TextureRect" parent="HitButton/Visual"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CenterDot" type="TextureRect" parent="HitButton/Visual"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 40.0
+offset_right = 56.0
+offset_bottom = 56.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LockIcon" type="TextureRect" parent="HitButton/Visual"]
+visible = false
+layout_mode = 0
+offset_left = 36.0
+offset_top = 36.0
+offset_right = 60.0
+offset_bottom = 60.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="OrbitPivot" type="Node2D" parent="HitButton/Visual"]
+position = Vector2(48, 48)
+
+[node name="OrbitDot" type="Sprite2D" parent="HitButton/Visual/OrbitPivot"]
+position = Vector2(40, 0)
+
+[node name="NumberLabel" type="Label" parent="."]
+layout_mode = 0
+offset_top = 104.0
+offset_right = 96.0
+offset_bottom = 128.0
+mouse_filter = 2
+text = "01"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NameLabel" type="Label" parent="."]
+layout_mode = 0
+offset_top = 128.0
+offset_right = 96.0
+offset_bottom = 160.0
+mouse_filter = 2
+text = "关卡名称"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]

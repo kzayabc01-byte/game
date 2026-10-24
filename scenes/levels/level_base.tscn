@@ -78,7 +78,6 @@ text = "回到首页"
 
 [node name="LevelHUD" type="CanvasLayer" parent="LevelManager" unique_id=1405151958]
 layer = 10
-visible = false
 
 [node name="WinLabel" type="Label" parent="LevelManager/LevelHUD" unique_id=1077408447]
 custom_minimum_size = Vector2(500, 100)

@@ -22,6 +22,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameEvents="*res://core/game_events.gd"
+SceneTransition="*res://scenes/SceneTransition.tscn"
 
 [display]
 

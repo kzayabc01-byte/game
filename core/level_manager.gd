@@ -16,12 +16,25 @@ enum PublicationState { DRAFT, PUBLISHED }
 @export var next_level_scene: PackedScene
 @export var main_menu_scene: PackedScene = preload("res://scenes/MainMenu/MainMenu.tscn")
 
-var _win_label: Label
+const LEVEL_SELECT_SCENE := "res://scenes/LevelSelectPage/LevelSelectPage.tscn"
+
+@onready var _win_label: Label = $LevelHUD/WinLabel
+@onready var _pause_menu: CanvasLayer = $PauseMenu
+@onready var _resume_button: Button = $PauseMenu/Center/PanelContainer/Padding/Buttons/ResumeButton
+@onready var _restart_button: Button = $PauseMenu/Center/PanelContainer/Padding/Buttons/RestartButton
+@onready var _select_button: Button = $PauseMenu/Center/PanelContainer/Padding/Buttons/SelectButton
+@onready var _home_button: Button = $PauseMenu/Center/PanelContainer/Padding/Buttons/HomeButton
 var _won: bool = false
 
 
 func _ready() -> void:
-	_create_ui()
+	_win_label.hide()
+	_pause_menu.hide()
+	_pause_menu.process_mode = Node.PROCESS_MODE_ALWAYS
+	_resume_button.pressed.connect(_on_resume_pressed)
+	_restart_button.pressed.connect(_on_restart_pressed)
+	_select_button.pressed.connect(_on_select_pressed)
+	_home_button.pressed.connect(_on_home_pressed)
 	# 延后到所有节点 ready 之后再连接蚕茧，避免错过任何蚕茧
 	call_deferred("_connect_cocoons")
 
@@ -33,11 +46,38 @@ func _connect_cocoons() -> void:
 			cocoon.activated.connect(_on_cocoon_activated)
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("reset_level"):
+func _input(event: InputEvent) -> void:
+	if SceneTransition.is_transitioning():
+		return
+	if event.is_action_pressed("ui_cancel"):
+		_set_paused(not _pause_menu.visible)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("reset_level") and not _pause_menu.visible:
 		reset_level()
-	elif event.is_action_pressed("ui_cancel"):
-		get_tree().change_scene_to_packed(main_menu_scene)
+
+
+func _set_paused(should_pause: bool) -> void:
+	_pause_menu.visible = should_pause
+	get_tree().paused = should_pause
+	if should_pause:
+		_resume_button.grab_focus()
+
+
+func _on_resume_pressed() -> void:
+	_set_paused(false)
+
+
+func _on_restart_pressed() -> void:
+	SceneTransition.restart_current_scene()
+
+
+func _on_select_pressed() -> void:
+	LevelSelectPage.open_workshop_on_entry = false
+	SceneTransition.change_to_file(LEVEL_SELECT_SCENE)
+
+
+func _on_home_pressed() -> void:
+	SceneTransition.change_to_packed(main_menu_scene)
 
 
 ## 重置整个关卡：光源回到初始角度，机关回到初始状态
@@ -56,35 +96,5 @@ func _on_cocoon_activated() -> void:
 	_win_label.text = "%s 完成！蚕茧已激发" % level_name
 	_win_label.show()
 	if next_level_scene != null:
-		await get_tree().create_timer(1.5).timeout
+		await get_tree().create_timer(1.5, false).timeout
 		get_tree().change_scene_to_packed(next_level_scene)
-
-
-func _create_ui() -> void:
-	var ui := CanvasLayer.new()
-	ui.layer = 10
-	add_child(ui)
-
-	_win_label = Label.new()
-	_win_label.set_anchors_preset(Control.PRESET_CENTER)
-	_win_label.offset_left = -400.0
-	_win_label.offset_right = 400.0
-	_win_label.offset_top = -70.0
-	_win_label.offset_bottom = 70.0
-	_win_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_win_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_win_label.add_theme_font_size_override("font_size", 48)
-	_win_label.add_theme_color_override("font_color", Color(0.95, 0.88, 0.55))
-	_win_label.add_theme_color_override("font_outline_color", Color(0.08, 0.08, 0.1))
-	_win_label.add_theme_constant_override("outline_size", 10)
-	_win_label.hide()
-	ui.add_child(_win_label)
-
-	var hint := Label.new()
-	hint.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	hint.offset_top = -44.0
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.text = "拖拽光源转动方向 · Q/E 微调 · Shift+Q/E 精细微调 · R 重置关卡 · Esc 返回菜单"
-	hint.add_theme_font_size_override("font_size", 16)
-	hint.add_theme_color_override("font_color", Color(0.72, 0.75, 0.82))
-	ui.add_child(hint)
