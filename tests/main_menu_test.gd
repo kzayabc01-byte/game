@@ -41,8 +41,10 @@ func _ready() -> void:
 	add_child(menu)
 	await get_tree().process_frame
 
-	_check("关卡选择页默认显示正式关卡",
-			(menu.get_node("Title") as Label).text == "选择关卡")
+	var original_save_path := ProgressStore.save_path
+	ProgressStore.save_path = "user://main_menu_progress_%d.json" % Time.get_ticks_usec()
+	_check("关卡选择页默认显示章节入口",
+			(menu.get_node("Title") as Label).text == "选择章节")
 	menu.show_workshop()
 	_check("关卡选择页可以打开工坊",
 			(menu.get_node("Title") as Label).text == "关卡工坊")
@@ -58,11 +60,45 @@ func _ready() -> void:
 
 	menu.show_start_game()
 	var play_texts := _collect_control_texts(menu.get_node("%LevelList"))
-	_check("开始游戏包含镜面正式关", _has(play_texts, "镜面转角"))
-	_check("开始游戏包含折射正式关", _has(play_texts, "折射偏折"))
-	_check("开始游戏包含传送门正式关", _has(play_texts, "传送门"))
+	_check("开始游戏有社区入口", _has(play_texts, "社区关卡"))
 	_check("开始游戏不显示第7关草稿", not _has(play_texts, "level_07"))
 	_check("开始游戏按章节展示", _has(play_texts, "第 1 章") and _has(play_texts, "第 2 章"))
+	_check("首关开放、第二关初始锁定",
+			ChapterCatalog.is_unlocked("0c74d299-40db-4ffa-b7f2-082e628a5509")
+			and not ChapterCatalog.is_unlocked("8bce041e-50c8-4c02-bdd9-d0d7aeb155d4"))
+	menu._show_chapter(1)
+	play_texts = _collect_control_texts(menu.get_node("%LevelList"))
+	_check("第一章展示镜面与折射正式关",
+			_has(play_texts, "镜面转角") and _has(play_texts, "折射偏折"))
+	_check("锁定关卡展示前置关卡原因", _has(play_texts, "通过「示例关卡 · 镜面转角」解锁"))
+	_check("第 2 章在未完成前锁定", not ChapterCatalog.is_unlocked(
+			"f566aefe-74bb-4243-abfd-3c11c771fd66"))
+	ProgressStore.record_official_clear("0c74d299-40db-4ffa-b7f2-082e628a5509")
+	_check("通关记录按 ID 解锁下一关", ChapterCatalog.is_unlocked(
+			"8bce041e-50c8-4c02-bdd9-d0d7aeb155d4"))
+	var test_scene_root := get_tree().current_scene
+	var gameplay := (load(LEVEL_01) as PackedScene).instantiate()
+	get_tree().root.add_child(gameplay)
+	get_tree().current_scene = gameplay
+	await get_tree().process_frame
+	var gameplay_manager := gameplay.get_node("LevelManager") as LevelManager
+	var coins_before := ProgressStore.get_coins()
+	gameplay_manager._on_cocoon_activated()
+	await get_tree().process_frame
+	_check("正式关卡胜利保存进度并奖励 50 金币",
+			ProgressStore.get_coins() == coins_before + 50)
+	_check("通关结算提供下一关和重玩",
+			gameplay_manager._result_screen.visible
+			and gameplay_manager._result_layer.visible
+			and gameplay_manager._result_screen.size.x > 400.0
+			and _find_button(gameplay_manager._result_screen, "下一关") != null
+			and _find_button(gameplay_manager._result_screen, "重玩") != null)
+	get_tree().current_scene = test_scene_root
+	gameplay.queue_free()
+	await get_tree().process_frame
+	menu._show_chapter(2)
+	play_texts = _collect_control_texts(menu.get_node("%LevelList"))
+	_check("第二章展示传送门正式关", _has(play_texts, "传送门"))
 
 	menu.show_workshop()
 	var workshop_texts := _collect_control_texts(menu.get_node("%LevelList"))
@@ -81,7 +117,8 @@ func _ready() -> void:
 		else:
 			draft_count += 1
 	_check("六个既有关卡迁移为正式关卡", published_count >= 6)
-	_check("第7、8关保留为工坊草稿", draft_count >= 2)
+	_check("工坊记录覆盖现存关卡", published_count + draft_count
+		== LevelFileIO.scan_levels().size())
 
 	# 用第1关生成临时副本，完整验证 草稿 → 发布 → 撤回 → 删除。
 	var temp_path := menu.duplicate_level_as_draft(LEVEL_01)
@@ -90,6 +127,9 @@ func _ready() -> void:
 	var temp_metadata := LevelFileIO.read_level_metadata(temp_path)
 	_check("副本默认是草稿", int(temp_metadata.get(
 			&"publication_state", -1)) == LevelManager.PublicationState.DRAFT)
+	_check("副本有独立关卡 ID", str(temp_metadata.get(&"level_id", "")) !=
+			"0c74d299-40db-4ffa-b7f2-082e628a5509")
+	_check("副本保留关卡格式版本", int(temp_metadata.get(&"schema_version", 0)) == 1)
 
 	var publish_errors := menu.publish_level(temp_path, {
 		&"level_name": "发布流程测试",
@@ -112,8 +152,10 @@ func _ready() -> void:
 
 	menu.show_start_game()
 	play_texts = _collect_control_texts(menu.get_node("%LevelList"))
-	_check("发布后进入开始游戏", _has(play_texts, "发布流程测试"))
 	_check("发布后出现第三章", _has(play_texts, "第 3 章"))
+	menu._show_chapter(3)
+	play_texts = _collect_control_texts(menu.get_node("%LevelList"))
+	_check("发布后进入正式关卡目录", _has(play_texts, "发布流程测试"))
 
 	_check("正式关卡可以撤回发布", menu.unpublish_level(temp_path))
 	menu.show_start_game()
@@ -125,6 +167,10 @@ func _ready() -> void:
 
 	menu.queue_free()
 	await get_tree().process_frame
+	var progress_path := ProgressStore.save_path
+	ProgressStore.save_path = original_save_path
+	if FileAccess.file_exists(progress_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(progress_path))
 	if not temp_path.is_empty() and FileAccess.file_exists(temp_path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(temp_path))
 	_finish()

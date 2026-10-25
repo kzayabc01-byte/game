@@ -11,6 +11,7 @@
 
 [node name="LevelManager" parent="."]
 level_name = "示例 4 · 融冰"
+level_id = "f566aefe-74bb-4243-abfd-3c11c771fd66"
 publication_state = 1
 chapter = 2
 difficulty = 2

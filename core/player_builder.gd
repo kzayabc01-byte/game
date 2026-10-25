@@ -4,10 +4,17 @@ extends CanvasLayer
 ## Player-facing construction controls for a limited-build level.
 
 const ACTION_LINK_SCENE := preload("res://blocks/action_link/action_link.tscn")
+const MIN_VIEW_ZOOM := 0.5
+const MAX_VIEW_ZOOM := 2.5
+const VIEW_ZOOM_STEP := 1.15
 
 var _manager: LevelManager
 var _level_root: Node2D
 var _blocks: Node2D
+var _camera: Camera2D
+var _camera_initial_position := Vector2.ZERO
+var _camera_initial_zoom := Vector2.ONE
+var _camera_previous_process_mode: ProcessMode = Node.PROCESS_MODE_INHERIT
 var _remaining: Dictionary = {}
 var _placed: Array[Node2D] = []
 var _links: Array[ActionLink] = []
@@ -16,29 +23,42 @@ var _selection: Node2D = null
 var _selected_link: ActionLink = null
 var _placing_key := ""
 var _wiring_source: Node2D = null
+var _wire_dragging := false
 var _setting_destination := false
-var _dragging := false
-var _drag_offset := Vector2.ZERO
+var _view_panning := false
+var _pan_button: MouseButton = MOUSE_BUTTON_NONE
+var _transform_before: Dictionary = {}
+var _source_rotations: Dictionary = {}
+var _source_aim_before_test: Dictionary = {}
 var _testing := false
 var _inventory_box: VBoxContainer
-var _selection_label: Label
 var _status_label: Label
+var _recycle_button: Button
+var _wire_panel: PanelContainer
 var _wire_controls: VBoxContainer
 var _test_button: Button
-var _return_button: Button
 var _ghost: Polygon2D
 var _bounds_outline: Line2D
+var _wire_preview: Line2D
+var _gizmo: SelectionGizmo
 
 
 func configure(manager: LevelManager) -> void:
 	_manager = manager
 	_level_root = manager.get_parent() as Node2D
 	_blocks = _level_root.get_node("Blocks") as Node2D
+	_camera = _level_root.get_node("Camera2D") as Camera2D
+	_camera_initial_position = _camera.position
+	_camera_initial_zoom = _camera.zoom
+	_camera_previous_process_mode = _camera.process_mode
+	_camera.process_mode = Node.PROCESS_MODE_ALWAYS
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	layer = 15
 	for index in manager.build_item_keys.size():
 		if index < manager.build_item_counts.size():
-			_remaining[manager.build_item_keys[index]] = maxi(manager.build_item_counts[index], 0)
+			var count := maxi(manager.build_item_counts[index], 0)
+			if count > 0:
+				_remaining[manager.build_item_keys[index]] = count
 	for child in _blocks.get_children():
 		if child is StoneBlock:
 			(child as StoneBlock).player_draggable = false
@@ -59,6 +79,17 @@ func configure(manager: LevelManager) -> void:
 		bounds.end, Vector2(bounds.position.x, bounds.end.y), bounds.position,
 	])
 	_blocks.add_child(_bounds_outline)
+	_wire_preview = Line2D.new()
+	_wire_preview.width = 2.0
+	_wire_preview.default_color = Color(1.0, 0.72, 0.25, 0.8)
+	_wire_preview.visible = false
+	_blocks.add_child(_wire_preview)
+	_gizmo = SelectionGizmo.new()
+	_gizmo.grid_snap_enabled = false
+	_gizmo.z_index = 20
+	_gizmo.transform_started.connect(_on_transform_started)
+	_gizmo.transform_committed.connect(_on_transform_committed)
+	_blocks.add_child(_gizmo)
 	_level_root.process_mode = Node.PROCESS_MODE_DISABLED
 	_refresh_ui()
 
@@ -68,6 +99,14 @@ func _exit_tree() -> void:
 		_ghost.free()
 	if is_instance_valid(_bounds_outline):
 		_bounds_outline.free()
+	if is_instance_valid(_wire_preview):
+		_wire_preview.free()
+	if is_instance_valid(_gizmo):
+		_gizmo.free()
+	if is_instance_valid(_camera):
+		_camera.position = _camera_initial_position
+		_camera.zoom = _camera_initial_zoom
+		_camera.process_mode = _camera_previous_process_mode
 	for line in _wire_lines.values():
 		if is_instance_valid(line):
 			(line as Node).free()
@@ -87,6 +126,10 @@ func cancel_active_tool() -> bool:
 func _process(_delta: float) -> void:
 	if _ghost != null and _ghost.visible:
 		_ghost.global_position = _level_root.get_global_mouse_position()
+	if _wire_preview != null and _wire_preview.visible and is_instance_valid(_wiring_source):
+		_wire_preview.points = PackedVector2Array([
+			_wiring_source.position, _blocks.get_local_mouse_position(),
+		])
 	for link in _links:
 		if not is_instance_valid(link) or not _wire_lines.has(link):
 			continue
@@ -101,32 +144,71 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _testing:
 		return
 	var key := event as InputEventKey
-	if key != null and key.pressed and key.keycode == KEY_ESCAPE:
-		_placing_key = ""
-		_wiring_source = null
-		_setting_destination = false
-		_ghost.visible = false
-		_refresh_ui()
+	if key != null and key.pressed and not key.echo:
+		match key.keycode:
+			KEY_ESCAPE:
+				_cancel_tool()
+				get_viewport().set_input_as_handled()
+				return
+			KEY_Q, KEY_E:
+				if not key.ctrl_pressed and not key.alt_pressed and _can_drag_selection():
+					var direction := -1.0 if key.keycode == KEY_Q else 1.0
+					_rotate_selected(direction * (1.0 if key.shift_pressed else 15.0))
+					get_viewport().set_input_as_handled()
+					return
+			KEY_HOME:
+				_camera.position = _camera_initial_position
+				_camera.zoom = Vector2.ONE
+				_camera.force_update_scroll()
+				get_viewport().set_input_as_handled()
+				return
+			KEY_DELETE:
+				if _placed.has(_selection):
+					_recycle_selected()
+					get_viewport().set_input_as_handled()
+					return
+	var motion := event as InputEventMouseMotion
+	if motion != null and _view_panning:
+		if not Input.is_mouse_button_pressed(_pan_button):
+			_view_panning = false
+			_pan_button = MOUSE_BUTTON_NONE
+			Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+			return
+		_camera.position -= motion.relative / _camera.zoom
+		_camera.force_update_scroll()
 		get_viewport().set_input_as_handled()
 		return
-	var motion := event as InputEventMouseMotion
-	if motion != null and _dragging:
-		if not _can_drag_selection():
-			_dragging = false
-			return
-		var next_position := _level_root.get_global_mouse_position() + _drag_offset
-		if _can_place(_selection, next_position):
-			_selection.global_position = next_position
-			_sync_placed_origin(_selection)
+	if motion != null and _gizmo.is_dragging():
+		_gizmo.update_drag(_level_root.get_global_mouse_position())
+		get_viewport().set_input_as_handled()
+		return
+	if _handle_view_input(event):
 		get_viewport().set_input_as_handled()
 		return
 	var button := event as InputEventMouseButton
 	if button == null or button.button_index != MOUSE_BUTTON_LEFT:
 		return
 	if not button.pressed:
-		_dragging = false
+		if _wire_dragging:
+			_wire_dragging = false
+			var source := _wiring_source
+			_wiring_source = null
+			_wire_preview.hide()
+			_refresh_ui()
+			_try_connect(source, _block_at(_level_root.get_global_mouse_position()))
+		elif _gizmo.is_dragging():
+			_gizmo.end_drag()
+		get_viewport().set_input_as_handled()
 		return
 	var world_point := _level_root.get_global_mouse_position()
+	if button.shift_pressed and _manager.build_wire_limit > 0:
+		_select(_block_at(world_point))
+		_begin_wire()
+		if _wiring_source != null:
+			_wire_dragging = true
+			_wire_preview.show()
+		get_viewport().set_input_as_handled()
+		return
 	if _setting_destination and is_instance_valid(_selected_link):
 		var target := _selected_link.get_target()
 		if target != null and _manager.build_bounds.has_point(world_point):
@@ -145,11 +227,78 @@ func _unhandled_input(event: InputEvent) -> void:
 		_place_item(_placing_key, world_point)
 		get_viewport().set_input_as_handled()
 		return
+	var hit_mode := _gizmo.hit_test(world_point)
+	if hit_mode != SelectionGizmo.DragMode.NONE:
+		_gizmo.begin_drag(hit_mode, world_point)
+		get_viewport().set_input_as_handled()
+		return
 	_select(_block_at(world_point))
 	if _can_drag_selection():
-		_dragging = true
-		_drag_offset = _selection.global_position - world_point
+		_gizmo.begin_drag(SelectionGizmo.DragMode.MOVE, world_point)
 	get_viewport().set_input_as_handled()
+
+
+func _handle_view_input(event: InputEvent) -> bool:
+	var button := event as InputEventMouseButton
+	if button == null:
+		return false
+	if button.pressed and button.button_index == MOUSE_BUTTON_WHEEL_UP:
+		if _gizmo.is_dragging() or _wire_dragging:
+			return false
+		_set_view_zoom(_camera.zoom.x * VIEW_ZOOM_STEP)
+		return true
+	if button.pressed and button.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		if _gizmo.is_dragging() or _wire_dragging:
+			return false
+		_set_view_zoom(_camera.zoom.x / VIEW_ZOOM_STEP)
+		return true
+	if button.button_index != MOUSE_BUTTON_MIDDLE and button.button_index != MOUSE_BUTTON_RIGHT:
+		return false
+	if button.pressed and not _gizmo.is_dragging() and not _wire_dragging:
+		_view_panning = true
+		_pan_button = button.button_index
+		Input.set_default_cursor_shape(Input.CURSOR_DRAG)
+		return true
+	if not button.pressed and _view_panning and button.button_index == _pan_button:
+		_view_panning = false
+		_pan_button = MOUSE_BUTTON_NONE
+		Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+		return true
+	return false
+
+
+func _set_view_zoom(value: float) -> void:
+	var target := clampf(value, MIN_VIEW_ZOOM, MAX_VIEW_ZOOM)
+	if is_equal_approx(target, _camera.zoom.x):
+		return
+	var before := _level_root.get_global_mouse_position()
+	_camera.zoom = Vector2.ONE * target
+	_camera.force_update_scroll()
+	var after := _level_root.get_global_mouse_position()
+	_camera.position += before - after
+	_camera.force_update_scroll()
+
+
+func _on_transform_started() -> void:
+	if not _can_drag_selection():
+		return
+	_transform_before = {
+		"position": _selection.position,
+		"scale": _selection.scale,
+		"rotation": _selection.rotation,
+	}
+
+
+func _on_transform_committed() -> void:
+	if not _can_drag_selection():
+		return
+	if not _can_place(_selection, _selection.global_position):
+		_selection.position = _transform_before.get("position", _selection.position)
+		_selection.scale = _transform_before.get("scale", _selection.scale)
+		_selection.rotation = _transform_before.get("rotation", _selection.rotation)
+		_status_label.text = "这里不能放置元件。"
+	_sync_placed_origin(_selection)
+	_gizmo.queue_redraw()
 
 
 func _can_drag_selection() -> bool:
@@ -162,32 +311,49 @@ func _can_drag_selection() -> bool:
 
 func _build_ui() -> void:
 	var panel := PanelContainer.new()
-	panel.position = Vector2(12.0, 94.0)
-	panel.custom_minimum_size = Vector2(260.0, 0.0)
+	panel.position = Vector2(16.0, 96.0)
+	panel.custom_minimum_size = Vector2(224.0, 0.0)
+	_style_panel(panel)
 	add_child(panel)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(260.0, 475.0)
+	scroll.custom_minimum_size = Vector2(224.0, minf(132.0 + _remaining.size() * 42.0, 500.0))
 	panel.add_child(scroll)
 	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(235.0, 0.0)
-	box.add_theme_constant_override("separation", 6)
+	box.custom_minimum_size = Vector2(208.0, 0.0)
+	box.add_theme_constant_override("separation", 8)
 	scroll.add_child(box)
 	var title := Label.new()
-	title.text = "本关工具箱"
-	title.add_theme_font_size_override("font_size", 19)
+	title.text = "可放置元件"
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color(1.0, 0.72, 0.0))
 	box.add_child(title)
 	_inventory_box = VBoxContainer.new()
 	box.add_child(_inventory_box)
-	box.add_child(_make_button("取消放置 / 接线", _cancel_tool))
-	_selection_label = Label.new()
-	_selection_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_selection_label)
-	box.add_child(_make_button("旋转选中元件 −15°", _rotate_selected.bind(-15.0)))
-	box.add_child(_make_button("旋转选中元件 +15°", _rotate_selected.bind(15.0)))
-	box.add_child(_make_button("回收选中元件", _recycle_selected))
-	box.add_child(_make_button("从选中开关接电线", _begin_wire))
+	_recycle_button = _make_button("回收", _recycle_selected)
+	box.add_child(_recycle_button)
+	_test_button = _make_button("开始试射", _toggle_test)
+	box.add_child(_test_button)
+
+	_wire_panel = PanelContainer.new()
+	_wire_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_wire_panel.offset_left = -264.0
+	_wire_panel.offset_right = -16.0
+	_wire_panel.offset_top = 96.0
+	_wire_panel.custom_minimum_size = Vector2(248.0, 0.0)
+	_style_panel(_wire_panel)
+	_wire_panel.hide()
+	add_child(_wire_panel)
+	var wire_box := VBoxContainer.new()
+	wire_box.add_theme_constant_override("separation", 8)
+	_wire_panel.add_child(wire_box)
+	var wire_title := Label.new()
+	wire_title.text = "电线动作"
+	wire_title.add_theme_font_size_override("font_size", 18)
+	wire_title.add_theme_color_override("font_color", Color(1.0, 0.72, 0.0))
+	wire_box.add_child(wire_title)
 	_wire_controls = VBoxContainer.new()
-	box.add_child(_wire_controls)
+	_wire_controls.add_theme_constant_override("separation", 6)
+	wire_box.add_child(_wire_controls)
 	_wire_controls.add_child(_make_button("设置机关运动终点", _begin_destination))
 	var angle_row := HBoxContainer.new()
 	_wire_controls.add_child(angle_row)
@@ -224,13 +390,28 @@ func _build_ui() -> void:
 	repeat_check.set_meta("wire_property", "repeat")
 	_wire_controls.add_child(repeat_check)
 	_wire_controls.add_child(_make_button("拆除选中电线", _remove_selected_wire))
-	_test_button = _make_button("开始试射", _start_test)
-	box.add_child(_test_button)
-	_return_button = _make_button("返回搭建", _return_to_build)
-	box.add_child(_return_button)
 	_status_label = Label.new()
+	_status_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	_status_label.offset_left = 16.0
+	_status_label.offset_right = 520.0
+	_status_label.offset_top = -72.0
+	_status_label.offset_bottom = -12.0
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_status_label)
+	_status_label.add_theme_color_override("font_color", Color(0.9, 0.88, 0.76))
+	add_child(_status_label)
+
+
+func _style_panel(panel: PanelContainer) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.043, 0.047, 0.039, 0.94)
+	style.border_color = Color(1.0, 0.72, 0.0)
+	style.border_width_top = 1
+	style.border_width_left = 1
+	style.content_margin_left = 12.0
+	style.content_margin_right = 12.0
+	style.content_margin_top = 12.0
+	style.content_margin_bottom = 12.0
+	panel.add_theme_stylebox_override("panel", style)
 
 
 func _make_button(label: String, callback: Callable) -> Button:
@@ -270,34 +451,26 @@ func _refresh_ui() -> void:
 			label += "（一对）"
 		var button := _make_button("%s × %d" % [label, _remaining[key]],
 			_select_item.bind(key))
+		button.tooltip_text = "点击后在场景中放置；再次点击或按 Esc 取消"
 		button.disabled = int(_remaining[key]) <= 0 or _testing
 		_inventory_box.add_child(button)
-	_selection_label.text = "未选中元件"
-	if is_instance_valid(_selection):
-		var edit_hint := "设计者预置，已锁定"
-		if _placed.has(_selection):
-			if _selection is StoneBlock:
-				edit_hint = "不可拖动，可旋转、回收"
-			else:
-				edit_hint = "可移动、旋转、回收"
-		_selection_label.text = "%s：%s" % [
-			_selection.name,
-			edit_hint,
-		]
-	_wire_controls.visible = is_instance_valid(_selected_link) and not _testing
-	if _wire_controls.visible:
+	_recycle_button.disabled = _testing or not _placed.has(_selection)
+	_wire_panel.visible = is_instance_valid(_selected_link) and not _testing
+	if _wire_panel.visible:
 		for child in _wire_controls.get_children():
 			for control in child.get_children():
 				_sync_wire_control(control)
 			_sync_wire_control(child)
-	_test_button.visible = not _testing
-	_return_button.visible = _testing
-	_status_label.text = "空格发射；返回搭建可调整元件。" if _testing else (
-		"点击场景放置：%s" % _placing_key if not _placing_key.is_empty() else
-		"先选元件，再点场景放置。预置物体不可修改。"
-	)
+	_test_button.text = "返回搭建" if _testing else "开始试射"
+	if _testing:
+		_status_label.text = "移动鼠标瞄准，按空格发射。"
+	elif not _placing_key.is_empty():
+		_status_label.text = "点击场景放置：%s" % str(
+			_entry_for_key(_placing_key).get("label", "元件"))
+	else:
+		_status_label.text = "拖动手柄旋转或缩放；滚轮缩放视图；Shift+拖动开关接线。"
 	if _wiring_source != null:
-		_status_label.text = "点击允许连接的机关，完成电线。"
+		_status_label.text = "拖到允许连接的机关，松开鼠标完成接线。"
 	if _setting_destination:
 		_status_label.text = "点击场景，指定机关运动终点。"
 	if _ghost != null:
@@ -331,6 +504,9 @@ func _select_item(key: String) -> void:
 func _cancel_tool() -> void:
 	_placing_key = ""
 	_wiring_source = null
+	_wire_dragging = false
+	if _wire_preview != null:
+		_wire_preview.hide()
 	_setting_destination = false
 	_refresh_ui()
 
@@ -388,6 +564,8 @@ func _place_item(key: String, point: Vector2) -> void:
 		second.linked_portal = first
 		second.rotation = PI
 	_remaining[key] = int(_remaining[key]) - 1
+	if int(_remaining[key]) <= 0:
+		_placing_key = ""
 	_select(created[0])
 	_refresh_ui()
 
@@ -406,7 +584,7 @@ func _can_place_size(point: Vector2, size: Vector2, moving: Node2D) -> bool:
 		var other := child as Node2D
 		if (
 			other == null or other == moving or other is ActionLink
-			or other is Line2D or other is Polygon2D
+			or other is Line2D or other is Polygon2D or other is SelectionGizmo
 		):
 			continue
 		var other_size := PaletteData.entry_size(other.scene_file_path)
@@ -421,7 +599,10 @@ func _block_at(point: Vector2) -> Node2D:
 	var children := _blocks.get_children()
 	for index in range(children.size() - 1, -1, -1):
 		var block := children[index] as Node2D
-		if block == null or block is ActionLink or block is Line2D or block is Polygon2D:
+		if (
+			block == null or block is ActionLink or block is Line2D
+			or block is Polygon2D or block is SelectionGizmo
+		):
 			continue
 		var size := PaletteData.entry_size(block.scene_file_path)
 		var local := (point - block.global_position).rotated(-block.rotation)
@@ -435,19 +616,24 @@ func _block_at(point: Vector2) -> Node2D:
 func _select(block: Node2D) -> void:
 	_selection = block
 	_selected_link = _link_for_target(block)
+	_gizmo.set_target(block if _can_drag_selection() else null)
 	_refresh_ui()
 
 
 func _rotate_selected(degrees: float) -> void:
-	if not _placed.has(_selection):
+	if not _can_drag_selection():
 		return
+	var previous := _selection.rotation
 	_selection.rotation += deg_to_rad(degrees)
+	if not _can_place(_selection, _selection.global_position):
+		_selection.rotation = previous
 	_sync_placed_origin(_selection)
+	_gizmo.queue_redraw()
 	_refresh_ui()
 
 
 func _recycle_selected() -> void:
-	if not _placed.has(_selection):
+	if _testing or not _placed.has(_selection):
 		return
 	var key := str(_selection.get_meta("inventory_key", ""))
 	var removed: Array[Node2D] = [_selection]
@@ -464,6 +650,7 @@ func _recycle_selected() -> void:
 	_remaining[key] = int(_remaining.get(key, 0)) + 1
 	_selection = null
 	_selected_link = null
+	_gizmo.set_target(null)
 	_refresh_ui()
 
 
@@ -576,23 +763,65 @@ func _sync_placed_origin(block: Node2D) -> void:
 
 func _start_test() -> void:
 	_cancel_tool()
-	_dragging = false
+	if _view_panning:
+		_view_panning = false
+		_pan_button = MOUSE_BUTTON_NONE
+		Input.set_default_cursor_shape(Input.CURSOR_ARROW)
+	if _gizmo.is_dragging():
+		_gizmo.end_drag()
 	var focus := get_viewport().gui_get_focus_owner()
 	if focus != null:
 		focus.release_focus()
+	_source_rotations.clear()
+	_source_aim_before_test.clear()
+	for child in _blocks.get_children():
+		var source := child as LightSource
+		if source == null:
+			continue
+		_source_aim_before_test[source] = source.follow_mouse
+		if _placed.has(source):
+			_source_rotations[source] = source.rotation
 	_manager.reset_level()
+	var first_source: LightSource = null
+	for source in _source_aim_before_test:
+		if not is_instance_valid(source):
+			continue
+		if _source_rotations.has(source):
+			source.rotation = _source_rotations[source]
+		source.follow_mouse = true
+		if first_source == null:
+			first_source = source
+	if first_source != null:
+		first_source.select_for_aim()
 	_testing = true
 	_bounds_outline.visible = false
+	_gizmo.hide()
 	_level_root.process_mode = Node.PROCESS_MODE_INHERIT
 	_refresh_ui()
 
 
 func _return_to_build() -> void:
 	_manager.reset_level()
+	for source in _source_aim_before_test:
+		if not is_instance_valid(source):
+			continue
+		source.follow_mouse = _source_aim_before_test[source]
+		if _source_rotations.has(source):
+			source.rotation = _source_rotations[source]
+	_source_rotations.clear()
+	_source_aim_before_test.clear()
 	_level_root.process_mode = Node.PROCESS_MODE_DISABLED
 	_testing = false
 	_bounds_outline.visible = true
+	_gizmo.show()
 	_refresh_ui()
+
+
+func _toggle_test() -> void:
+	if _testing:
+		_return_to_build()
+	else:
+		_start_test()
 
 
 func _unique_name(base: String) -> String:

@@ -124,6 +124,7 @@ func duplicate_level_as_draft(path: String) -> String:
 	var target_path := LEVEL_DIR + "/" + file_name
 	level_root.name = _root_name_for_file(file_name)
 	manager.level_name = "%s 副本" % _level_title(path)
+	manager.level_id = LevelFileIO.create_level_id()
 	manager.publication_state = LevelManager.PublicationState.DRAFT
 	manager.next_level_scene = null
 	var base_path := LevelFileIO.get_base_scene_path_from_file(path)
@@ -141,30 +142,88 @@ func _go_to_main_menu() -> void:
 
 
 func _show_start_game() -> void:
-	_title_label.text = "选择关卡"
-	_subtitle_label.text = "选择一个正式关卡"
+	_title_label.text = "选择章节"
+	_subtitle_label.text = "官方关卡依次解锁 · 社区关卡独立游玩"
 	_clear_level_list()
-	var published: Array[Dictionary] = []
-	for record in _level_records:
-		if record[&"published"]:
-			published.append(record)
-	published.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		if a[&"chapter"] != b[&"chapter"]:
-			return a[&"chapter"] < b[&"chapter"]
-		if a[&"order_in_chapter"] != b[&"order_in_chapter"]:
-			return a[&"order_in_chapter"] < b[&"order_in_chapter"]
-		return a[&"path"] < b[&"path"])
+	var published := ChapterCatalog.get_official_levels()
 	if published.is_empty():
 		_add_empty_hint("还没有正式关卡。请先在关卡工坊中发布。")
 	else:
-		var current_chapter := -1
-		for record in published:
-			if record[&"chapter"] != current_chapter:
-				current_chapter = record[&"chapter"]
-				_level_list.add_child(_make_section_label("第 %d 章" % current_chapter))
-			_level_list.add_child(_make_play_button(record))
+		var chapters: Dictionary = {}
+		var chapter_numbers: Array[int] = []
+		for level in published:
+			var number: int = level["chapter"]
+			if not chapters.has(number):
+				chapters[number] = []
+				chapter_numbers.append(number)
+			chapters[number].append(level)
+		chapter_numbers.sort()
+		for number in chapter_numbers:
+			var levels: Array = chapters[number]
+			var completed := 0
+			for level in levels:
+				if ProgressStore.is_completed(level["level_id"]):
+					completed += 1
+			var first: Dictionary = levels[0]
+			var unlocked := ChapterCatalog.is_unlocked(first["level_id"])
+			var label := "第 %d 章  ·  %s\n%d / %d 关已完成" % [
+				number, ChapterCatalog.get_chapter_name(number), completed, levels.size(),
+			]
+			if not unlocked:
+				var index := published.find(first)
+				if index > 0:
+					label += "  ·  通过「%s」解锁" % published[index - 1]["title"]
+			var button := _make_button(label, _show_chapter.bind(number), Vector2(620.0, 76.0))
+			button.disabled = not unlocked
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			_style_catalog_button(button, not unlocked)
+			_level_list.add_child(button)
+	var community_button := _make_button("社区关卡  ·  玩家作品", _show_community)
+	_style_catalog_button(community_button, false)
+	_level_list.add_child(community_button)
 	_level_list.add_child(_make_button("← 返回主菜单", _go_to_main_menu, Vector2(320.0, 42.0)))
-	_status_label.text = "共 %d 个正式关卡" % published.size()
+	_status_label.text = "官方 %d 关 · 进度保存在本机" % published.size()
+
+
+func _show_chapter(number: int) -> void:
+	_title_label.text = "第 %d 章" % number
+	_subtitle_label.text = ChapterCatalog.get_chapter_name(number)
+	_clear_level_list()
+	var levels := ChapterCatalog.get_official_levels()
+	var count := 0
+	for index in levels.size():
+		var level: Dictionary = levels[index]
+		if level["chapter"] != number:
+			continue
+		count += 1
+		var unlocked := ChapterCatalog.is_unlocked(level["level_id"])
+		var completed := ProgressStore.is_completed(level["level_id"])
+		var state := "已完成" if completed else "可游玩" if unlocked else "未解锁"
+		var detail := "难度 %d" % level["difficulty"]
+		var tags: PackedStringArray = level["mechanic_tags"]
+		if not tags.is_empty():
+			detail += " · " + " · ".join(tags)
+		if not unlocked and index > 0:
+			detail += " · 通过「%s」解锁" % levels[index - 1]["title"]
+		var label := "%02d  %s  ·  %s\n%s" % [
+			count, level["title"], state, detail,
+		]
+		var button := _make_button(label, _on_play_path.bind(level["path"]), Vector2(620.0, 70.0))
+		button.disabled = not unlocked
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_style_catalog_button(button, not unlocked)
+		_level_list.add_child(button)
+	_level_list.add_child(_make_button("← 返回章节", _show_start_game, Vector2(320.0, 42.0)))
+	_status_label.text = "第 %d 章 · %d 关" % [number, count]
+
+
+func _show_community() -> void:
+	_title_label.text = "社区关卡"
+	_subtitle_label.text = "玩家作品与官方进度分开"
+	_clear_level_list()
+	_add_empty_hint("玩家创作与发布入口将在后续版本开放。")
+	_level_list.add_child(_make_button("← 返回章节", _show_start_game, Vector2(320.0, 42.0)))
+	_status_label.text = "社区关卡不参与官方解锁或金币结算"
 
 
 func _show_workshop() -> void:
@@ -181,21 +240,6 @@ func _show_workshop() -> void:
 			_level_list.add_child(_make_workshop_card(record))
 	_level_list.add_child(_make_button("← 返回主菜单", _go_to_main_menu, Vector2(320.0, 42.0)))
 	_status_label.text = "共 %d 个工坊关卡" % _level_records.size()
-
-
-func _make_play_button(record: Dictionary) -> Button:
-	var tags: PackedStringArray = record[&"mechanic_tags"]
-	var tag_text := " · ".join(tags)
-	var detail := "难度 %d" % record[&"difficulty"]
-	if not tag_text.is_empty():
-		detail += " · " + tag_text
-	var text := "%02d  %s\n%s" % [
-		record[&"order_in_chapter"], record[&"title"], detail,
-	]
-	var button := _make_button(
-			text, _on_play_path.bind(record[&"path"]), Vector2(620.0, 64.0))
-	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	return button
 
 
 func _make_workshop_card(record: Dictionary) -> PanelContainer:
@@ -263,12 +307,25 @@ func _make_small_button(text: String, callback: Callable) -> Button:
 	return _make_button(text, callback, Vector2(104.0, 34.0))
 
 
-func _make_section_label(text: String) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", 20)
-	label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	return label
+func _style_catalog_button(button: Button, locked: bool) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.09, 0.12, 0.17) if not locked else Color(0.07, 0.08, 0.10)
+	normal.border_color = Color(0.88, 0.70, 0.27) if not locked else Color(0.32, 0.35, 0.39)
+	normal.border_width_left = 4
+	normal.border_width_bottom = 1
+	normal.content_margin_left = 16.0
+	normal.content_margin_right = 16.0
+	normal.content_margin_top = 10.0
+	normal.content_margin_bottom = 10.0
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(0.14, 0.18, 0.24)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", hover)
+	button.add_theme_stylebox_override("disabled", normal)
+	button.add_theme_font_size_override("font_size", 18)
+	button.add_theme_color_override("font_color", Color(0.95, 0.94, 0.89))
+	button.add_theme_color_override("font_disabled_color", Color(0.65, 0.67, 0.69))
 
 
 func _add_empty_hint(text: String) -> void:

@@ -47,6 +47,27 @@ func _run() -> void:
 			_editor.get_current_path() == "res://scenes/levels/level_01.tscn"
 			and _editor.get_level_root().name == "Level01")
 	_editor.new_level()
+	var escape_event := InputEventKey.new()
+	escape_event.keycode = KEY_ESCAPE
+	escape_event.pressed = true
+	Input.parse_input_event(escape_event)
+	await get_tree().process_frame
+	_check("按 Esc 不会直接离开空白编辑器", is_instance_valid(_editor)
+		and _editor.is_inside_tree())
+	_check("工具栏提供明确的返回工坊按钮",
+		_find_base_button(_editor, "返回工坊") != null)
+	var build_level := (load("res://scenes/levels/level_base.tscn") as PackedScene).instantiate()
+	(build_level.get_node("LevelManager") as LevelManager).level_kind = LevelManager.LevelKind.BUILD
+	_editor._mount_level(build_level)
+	await get_tree().process_frame
+	var build_manager := build_level.get_node("LevelManager") as LevelManager
+	_check("搭建关嵌入编辑器后不再接收游玩输入",
+		build_manager != null and not build_manager.is_processing_input())
+	Input.parse_input_event(escape_event)
+	await get_tree().process_frame
+	_check("搭建关编辑器按 Esc 不会退出", is_instance_valid(_editor)
+		and _editor.is_inside_tree())
+	_editor.new_level()
 
 	# 1. 场景结构
 	_check("编辑器节点树齐全",

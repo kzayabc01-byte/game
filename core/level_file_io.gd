@@ -21,7 +21,7 @@ const WIRE_TABLE := {
 
 const FLOAT_TOLERANCE := 1e-6
 const LEVEL_METADATA_KEYS: Array[StringName] = [
-	&"level_name", &"publication_state", &"chapter", &"order_in_chapter",
+	&"level_name", &"level_id", &"schema_version", &"publication_state", &"chapter", &"order_in_chapter",
 	&"difficulty", &"mechanic_tags",
 		&"level_kind", &"build_item_keys", &"build_item_counts",
 		&"build_bounds", &"build_wire_limit", &"build_wire_targets",
@@ -61,6 +61,8 @@ static func read_level_metadata(path: String) -> Dictionary:
 		return {}
 	var result := {
 		&"level_name": manager.level_name,
+		&"level_id": manager.level_id,
+		&"schema_version": manager.schema_version,
 		&"publication_state": int(manager.publication_state),
 		&"chapter": manager.chapter,
 		&"order_in_chapter": manager.order_in_chapter,
@@ -86,6 +88,8 @@ static func update_level_metadata(path: String, values: Dictionary) -> Error:
 	for key in LEVEL_METADATA_KEYS:
 		if values.has(key):
 			manager.set(key, values[key])
+	if manager.level_id.is_empty():
+		manager.level_id = create_level_id()
 	var base_path := get_base_scene_path_from_file(path)
 	var text := serialize_level(level_root, base_path)
 	level_root.free()
@@ -181,6 +185,20 @@ static func serialize_level(level_root: Node, base_scene_path: String = BASE_SCE
 				conn["signal"], conn["from"], conn["to"], conn["method"],
 			])
 	return "\n".join(lines) + "\n"
+
+
+static func create_level_id() -> String:
+	var bytes := Crypto.new().generate_random_bytes(16)
+	bytes[6] = (bytes[6] & 0x0f) | 0x40
+	bytes[8] = (bytes[8] & 0x3f) | 0x80
+	var parts: Array[String] = []
+	for value in bytes:
+		parts.append("%02x" % value)
+	return "%s-%s-%s-%s-%s" % [
+		"".join(parts.slice(0, 4)), "".join(parts.slice(4, 6)),
+		"".join(parts.slice(6, 8)), "".join(parts.slice(8, 10)),
+		"".join(parts.slice(10, 16)),
+	]
 
 
 ## 进树前捕获积木实例的全部可存储属性（抵消 _ready 副作用，如传送门自动配对）

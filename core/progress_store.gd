@@ -29,6 +29,27 @@ static func award_clear() -> bool:
 	return _write(data)
 
 
+static func is_completed(level_id: String) -> bool:
+	if level_id.is_empty():
+		return false
+	var raw: Variant = _read().get("completed", {})
+	var completed: Dictionary = raw if raw is Dictionary else {}
+	return completed.has(level_id)
+
+
+static func record_official_clear(level_id: String) -> bool:
+	if level_id.is_empty():
+		return false
+	var data := _read()
+	var raw: Variant = data.get("completed", {})
+	var completed: Dictionary = raw if raw is Dictionary else {}
+	if not completed.has(level_id):
+		completed[level_id] = {"first_clear_at": int(Time.get_unix_time_from_system())}
+	data["completed"] = completed
+	data["coins"] = maxi(int(data.get("coins", 0)), 0) + CLEAR_REWARD
+	return _write(data)
+
+
 static func buy_hint_upgrade() -> bool:
 	var data := _read()
 	var coins := maxi(int(data.get("coins", 0)), 0)

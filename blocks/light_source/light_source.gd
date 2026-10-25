@@ -62,6 +62,10 @@ func get_angle_label_text() -> String:
 	return "%d°" % degrees
 
 
+func select_for_aim() -> void:
+	_selected_source_id = get_instance_id()
+
+
 func reset_state() -> void:
 	rotation = _initial_rotation
 	_aim_offset_degrees = 0.0

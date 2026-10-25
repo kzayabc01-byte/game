@@ -10,6 +10,7 @@
 
 [node name="LevelManager" parent="."]
 level_name = "示例 3 · 一分为三"
+level_id = "1b0f4ed2-af21-4c58-ba25-707cef1198eb"
 publication_state = 1
 order_in_chapter = 3
 difficulty = 2

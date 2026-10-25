@@ -18,7 +18,7 @@ extends Control
 ##
 ## 快捷键：箭头 微移（Shift=32px）· Q/E 旋转 ±15°（Shift=1°）· Del 删除
 ##          滚轮缩放 · 中键/右键拖动画布 · Ctrl+D 复制 · Ctrl+Z/Y 撤销重做
-##          Ctrl+S/O/N · Esc 取消选中/退出试玩或验证/返回主菜单
+##          Ctrl+S/O/N · Esc 取消当前操作/退出试玩或验证
 
 const LEVELS_DIR := "res://scenes/levels"
 const BASE_SCENE := "res://scenes/levels/level_base.tscn"
@@ -696,8 +696,13 @@ func _escape_pressed() -> void:
 	if _selection != null:
 		clear_selection()
 		return
+	_update_status()
+	_status_label.text += " ｜ 点击“返回工坊”离开编辑器"
+
+
+func _request_return_to_workshop() -> void:
 	if _dirty:
-		_show_confirm("返回关卡选择？未保存的改动会丢失。", _go_to_menu)
+		_show_confirm("返回关卡工坊？未保存的改动会丢失。", _go_to_menu)
 	else:
 		_go_to_menu()
 
@@ -894,6 +899,10 @@ func _mount_level(instance: Node) -> void:
 		level_camera.enabled = false
 	var previous := _level_root
 	_level_holder.add_child(instance)
+	var manager := instance.get_node_or_null("LevelManager") as LevelManager
+	if manager != null:
+		manager.set_process_input(false)
+		manager.set_process_unhandled_input(false)
 	# 回写干净属性表，抵消 _ready 副作用（传送门自动配对）
 	LevelFileIO.restore_props(instance, clean_props)
 	_level_root = instance
@@ -1210,6 +1219,9 @@ func _set_source_preview_visual(source: Node2D, active: bool) -> void:
 # ============================================================
 
 func _write_current() -> bool:
+	var manager := _level_root.get_node_or_null("LevelManager") as LevelManager
+	if manager != null and manager.level_id.is_empty():
+		manager.level_id = LevelFileIO.create_level_id()
 	if LevelFileIO.write_text(_current_path, serialize()) != OK:
 		_status_label.text = "保存失败：无法写入 %s" % _current_path
 		return false
@@ -1223,17 +1235,23 @@ func _on_save_dialog_confirmed() -> void:
 	if not LevelFileIO.validate_file_name(file_name):
 		_status_label.text = "文件名不合法：应为 level_NN.tscn 或 level_NN_说明.tscn"
 		return
+	var target_path := LEVELS_DIR + "/" + file_name
+	if FileAccess.file_exists(target_path) and target_path != _current_path:
+		_status_label.text = "保存失败：同名关卡已存在，请换一个文件名"
+		return
 	var manager := _level_root.get_node_or_null("LevelManager")
 	if manager != null:
 		var title := _save_title_edit.text.strip_edges()
 		if not title.is_empty():
 			manager.level_name = title
+		if target_path != _current_path or manager.level_id.is_empty():
+			manager.level_id = LevelFileIO.create_level_id()
 		if _next_level_option.selected > 0:
 			manager.next_level_scene = load(LEVELS_DIR + "/"
 					+ _next_level_option.get_item_text(_next_level_option.selected))
 	# 根名随文件编号（Level06 风格）
 	_level_root.name = _root_name_for_file(file_name)
-	_current_path = LEVELS_DIR + "/" + file_name
+	_current_path = target_path
 	_write_current()
 
 
@@ -1286,6 +1304,9 @@ func _build_toolbar() -> void:
 	var box := HBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	rows.add_child(box)
+	var back_button := _make_button("返回工坊", _request_return_to_workshop)
+	box.add_child(back_button)
+	_toolbar_edit_controls.append(back_button)
 	var coverage_row := HBoxContainer.new()
 	coverage_row.add_theme_constant_override("separation", 8)
 	rows.add_child(coverage_row)

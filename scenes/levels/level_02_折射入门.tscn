@@ -10,6 +10,7 @@
 
 [node name="LevelManager" parent="."]
 level_name = "示例 2 · 折射偏折"
+level_id = "8bce041e-50c8-4c02-bdd9-d0d7aeb155d4"
 publication_state = 1
 order_in_chapter = 2
 mechanic_tags = PackedStringArray("折射")

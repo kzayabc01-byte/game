@@ -13,6 +13,7 @@
 
 [node name="LevelManager" parent="." index="3"]
 level_name = "机关秀 · 重力镜面"
+level_id = "242079a0-8aec-4da7-952f-44aec9890db8"
 publication_state = 1
 chapter = 2
 order_in_chapter = 3

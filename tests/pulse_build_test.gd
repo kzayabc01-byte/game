@@ -46,12 +46,22 @@ func _run_test() -> void:
 	_check("限定搭建关进入搭建状态", builder != null
 		and level.process_mode == Node.PROCESS_MODE_DISABLED)
 	var build_panel := builder.get_child(0) as PanelContainer if builder != null else null
-	_check("玩家工具箱面板有可操作的显示区域",
-		build_panel != null and build_panel.size.y >= 450.0)
+	_check("玩家工具箱只占紧凑区域",
+		build_panel != null and build_panel.size.y < 340.0)
 	_check("预置光源默认锁定方向", not source.follow_mouse)
 	if builder == null:
 		_finish()
 		return
+	var inventory_buttons: Array[String] = []
+	for child in builder._inventory_box.get_children():
+		if child is Button:
+			inventory_buttons.append((child as Button).text)
+	_check("左侧只列出本关允许摆放的元件", inventory_buttons == ["镜面 × 1"])
+	builder._select(source)
+	_check("预置元件不显示变换手柄，左栏仅保留回收和开始",
+		builder._gizmo.get_target() == null
+		and builder._recycle_button.disabled
+		and builder._test_button.text == "开始试射")
 	var authored_text := LevelFileIO.serialize_level(level)
 	var save_path := "user://pulse_build_roundtrip.tscn"
 	var saved := LevelFileIO.write_text(save_path, authored_text) == OK
@@ -75,7 +85,23 @@ func _run_test() -> void:
 	_check("玩家能放置限定数量的元件", builder._placed.size() == 1
 		and int(builder._remaining["mirror"]) == 0)
 	builder._select(builder._placed[0])
-	_check("普通玩家元件仍可拖动", builder._can_drag_selection())
+	_check("玩家元件通过场景手柄移动、缩放、旋转",
+		builder._can_drag_selection()
+		and builder._gizmo.get_target() == builder._placed[0])
+	var placed_mirror := builder._placed[0]
+	var scale_anchor := placed_mirror.global_position + Vector2(32.0, 12.0)
+	builder._gizmo.begin_drag(SelectionGizmo.DragMode.SCALE_BR, scale_anchor)
+	builder._gizmo.update_drag(scale_anchor + Vector2(16.0, 6.0))
+	builder._gizmo.end_drag()
+	_check("拖动角点实际改变元件尺寸", placed_mirror.scale.x > 1.1)
+	var rotation_anchor := placed_mirror.global_position + Vector2.UP * 50.0
+	builder._gizmo.begin_drag(SelectionGizmo.DragMode.ROTATE, rotation_anchor)
+	builder._gizmo.update_drag(placed_mirror.global_position + Vector2.RIGHT * 50.0)
+	builder._gizmo.end_drag()
+	_check("拖动旋转钮实际改变角度", absf(placed_mirror.rotation) > 0.1)
+	builder._set_view_zoom(1.4)
+	_check("搭建画布可直接缩放", is_equal_approx(
+		(level.get_node("Camera2D") as Camera2D).zoom.x, 1.4))
 	var placed_stone := (load("res://blocks/stone_block/stone_block.tscn") as PackedScene).instantiate() as StoneBlock
 	blocks.add_child(placed_stone)
 	builder._placed.append(placed_stone)
@@ -87,6 +113,8 @@ func _run_test() -> void:
 	builder._begin_wire()
 	builder._try_connect(trigger, mirror)
 	_check("已开放的预置目标可以接玩家电线", builder._links.size() == 1)
+	_check("电线参数只在右侧上下文面板显示", builder._wire_panel.visible
+		and builder._wire_panel.position.x > 600.0)
 	if builder._links.is_empty():
 		_finish()
 		return
@@ -96,6 +124,19 @@ func _run_test() -> void:
 	builder._start_test()
 	_check("试射开始后场景恢复运行", builder.is_testing()
 		and level.process_mode == Node.PROCESS_MODE_INHERIT)
+	await get_tree().process_frame
+	_check("开始试射后光源随鼠标瞄准", source.follow_mouse
+		and not is_zero_approx(source.rotation))
+	await get_tree().physics_frame
+	var preview := light._renderer as LightRayRenderer
+	var preview_path: PackedVector2Array = preview._segment_sets[0] \
+		if not preview._segment_sets.is_empty() else PackedVector2Array()
+	_check("试射虚线按光源瞄准方向实时绘制", preview.preview_mode
+		and preview_path.size() >= 2
+		and (preview_path[1] - preview_path[0]).normalized().dot(
+			source.get_light_direction()) > 0.98)
+	source.follow_mouse = false
+	source.rotation = 0.0
 	_check("点击发射前开关和机关保持静止", not trigger.is_active()
 		and mirror.position.is_equal_approx(Vector2(500.0, 300.0)))
 	_check("光线请求成功", light.request_fire())

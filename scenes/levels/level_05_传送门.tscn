@@ -10,6 +10,7 @@
 
 [node name="LevelManager" parent="."]
 level_name = "示例 5 · 传送门"
+level_id = "5f4046bf-7ae7-4871-a1cc-3340844d5375"
 publication_state = 1
 chapter = 2
 order_in_chapter = 2

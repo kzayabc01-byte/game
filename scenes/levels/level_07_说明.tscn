@@ -1,0 +1,18 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="2_light_source"]
+[ext_resource type="PackedScene" path="res://blocks/cocoon/cocoon.tscn" id="3_cocoon"]
+
+[node name="Level07" instance=ExtResource("1_base")]
+
+[node name="LevelManager" parent="." index="3"]
+level_kind = 1
+build_item_keys = PackedStringArray("mirror")
+build_item_counts = PackedInt32Array(2)
+build_bounds = Rect2(48, 96, 1056, 504)
+[node name="LightSource" parent="Blocks" instance=ExtResource("2_light_source")]
+position = Vector2(320, 192)
+[node name="Cocoon" parent="Blocks" instance=ExtResource("3_cocoon")]
+position = Vector2(736, 544)
+scale = Vector2(1.05, 0.73)
