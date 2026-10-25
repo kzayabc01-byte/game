@@ -24,6 +24,7 @@ var _hit_frame: int = -1
 var _hit_energy: float = 0.0
 var _melted: bool = false
 var _initial_layer: int = 8
+var _pulse_pending := false
 
 
 func _enter_tree() -> void:
@@ -38,10 +39,35 @@ func _ready() -> void:
 func on_ray(in_dir: Vector2, normal: Vector2, hit_pos: Vector2, energy: float) -> Array[Dictionary]:
 	if _melted:
 		return []
-	_hit_frame = Engine.get_physics_frames()
-	_hit_energy = energy
-	queue_redraw()
+	record_ray_hit(energy)
 	return super.on_ray(in_dir, normal, hit_pos, energy)
+
+
+func on_ray_preview(in_dir: Vector2, normal: Vector2, hit_pos: Vector2, energy: float) -> Array[Dictionary]:
+	if _melted:
+		return []
+	return super.on_ray(in_dir, normal, hit_pos, energy)
+
+
+func record_ray_hit(energy: float) -> void:
+	var current_frame := Engine.get_physics_frames()
+	_hit_energy = maxf(_hit_energy, energy) if _hit_frame == current_frame else energy
+	_hit_frame = current_frame
+	_pulse_pending = true
+	queue_redraw()
+
+
+func commit_pulse_hit(pulse_seconds: float) -> void:
+	if not _pulse_pending or _melted:
+		return
+	_pulse_pending = false
+	_hit_frame = -1
+	if _hit_energy >= required_energy:
+		_progress += pulse_seconds * _hit_energy * melt_efficiency / maxf(melt_seconds, 0.01)
+		if _progress >= 1.0:
+			_melt()
+	_hit_energy = 0.0
+	queue_redraw()
 
 
 func _physics_process(delta: float) -> void:
@@ -85,6 +111,7 @@ func reset_state() -> void:
 	_progress = 0.0
 	_hit_frame = -1
 	_hit_energy = 0.0
+	_pulse_pending = false
 	collision_layer = _initial_layer
 	_disable_shapes(false)
 	queue_redraw()

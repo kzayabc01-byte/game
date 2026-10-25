@@ -12,6 +12,7 @@ position = Vector2(576, 324)
 
 [node name="LightSystem" type="Node" parent="." unique_id=863915790]
 script = ExtResource("1_system")
+pulse_mode = true
 
 [node name="LevelManager" type="Node" parent="." unique_id=484672219]
 process_mode = 3
@@ -104,4 +105,26 @@ anchor_bottom = 1.0
 offset_top = -23.0
 grow_horizontal = 2
 grow_vertical = 0
-text = "拖拽光源转动方向 · Q/E 微调 · Shift+Q/E 精细微调 · R 重置关卡 · Esc 返回菜单"
+text = "鼠标瞄准 · 空格发射 · 左键选择光源 · R 重置关卡 · Esc 暂停"
+
+[node name="CoinsLabel" type="Label" parent="LevelManager/LevelHUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 14.0
+offset_right = -14.0
+offset_bottom = 38.0
+grow_horizontal = 0
+horizontal_alignment = 2
+
+[node name="UpgradeButton" type="Button" parent="LevelManager/LevelHUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 42.0
+offset_right = -14.0
+offset_bottom = 78.0
+grow_horizontal = 0
+text = "升级瞄准虚线 · 100 金币"

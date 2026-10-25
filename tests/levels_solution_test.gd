@@ -40,6 +40,8 @@ func _run_case(case: Dictionary) -> void:
 		return
 
 	var level := packed.instantiate()
+	var manager := level.get_node("LevelManager") as LevelManager
+	manager.publication_state = LevelManager.PublicationState.DRAFT
 	add_child(level)
 	await get_tree().physics_frame
 	await get_tree().physics_frame
@@ -57,13 +59,17 @@ func _run_case(case: Dictionary) -> void:
 		return
 
 	# 把光源转到“标准解”的角度
+	source.follow_mouse = false
 	source.rotation = deg_to_rad(float(case["deg"]))
-
-	var frames: int = case["frames"]
-	for _i in frames:
+	var light := level.get_node("LightSystem") as LightSystem
+	for _attempt in 12:
 		if _completed:
 			break
-		await get_tree().physics_frame
+		light.request_fire()
+		for _frame in 60:
+			if not light.is_pulse_active():
+				break
+			await get_tree().create_timer(0.05, true).timeout
 
 	_check("%s（转到 %.0f° 通关）" % [path.get_file(), float(case["deg"])], _completed)
 	if not _completed:

@@ -87,6 +87,11 @@ var _coverage_config_button: Button = null
 var _coverage_dialog: ConfirmationDialog = null
 var _coverage_start_spin: SpinBox = null
 var _coverage_end_spin: SpinBox = null
+var _level_settings_dialog: ConfirmationDialog = null
+var _level_kind_option: OptionButton = null
+var _build_inventory_spins: Dictionary = {}
+var _build_bounds_spins: Array[SpinBox] = []
+var _build_wire_spin: SpinBox = null
 var _toolbar_edit_controls: Array[BaseButton] = []
 var _save_dialog: ConfirmationDialog = null
 var _save_name_edit: LineEdit = null
@@ -104,6 +109,7 @@ var _spin_scale_y: SpinBox = null
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_editor_camera.make_current()
 	_gizmo.view_rect = VIEW_RECT
 	_gizmo.transform_started.connect(_on_gizmo_transform_started)
@@ -547,6 +553,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _level_root == null:
 		return
 	if _validation_mode:
+		if (
+			event is InputEventKey and event.pressed and not event.echo
+			and event.keycode == KEY_SPACE
+		):
+			var validation_light := _level_root.get_node_or_null("LightSystem") as LightSystem
+			if validation_light != null:
+				validation_light.request_fire()
+			get_viewport().set_input_as_handled()
+			return
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 			set_validation_mode(false)
 			get_viewport().set_input_as_handled()
@@ -557,6 +572,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if (_playtest_mode and event is InputEventKey and event.pressed
 			and event.keycode == KEY_ESCAPE):
 		set_playtest_mode(false)
+		get_viewport().set_input_as_handled()
+		return
+	if (
+		_playtest_mode and event is InputEventKey and event.pressed
+		and not event.echo and event.keycode == KEY_SPACE and not _ui_has_focus()
+	):
+		var test_light := _level_root.get_node_or_null("LightSystem") as LightSystem
+		if test_light != null:
+			test_light.request_fire()
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventKey and event.pressed:
@@ -824,6 +848,14 @@ func _handle_mouse_motion(screen_pos: Vector2) -> void:
 			_wire_layer.set_highlight_target(null)
 	elif _gizmo.is_dragging():
 		_gizmo.update_drag(world_point)
+	elif _playtest_mode:
+		_playtest_aim_source = _selection as LightSource
+		if _playtest_aim_source == null:
+			var sources := _level_root.get_tree().get_nodes_in_group(LightSource.SOURCE_GROUP)
+			if not sources.is_empty():
+				_playtest_aim_source = sources[0] as LightSource
+		_aim_playtest_source_at(world_point)
+		_playtest_aim_source = null
 
 
 func _aim_playtest_source_at(world_point: Vector2) -> void:
@@ -1023,6 +1055,9 @@ func _enter_playtest_mode() -> void:
 
 func _exit_playtest_mode() -> void:
 	_playtest_aim_source = null
+	var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
+	if light_system != null:
+		light_system.reset_state()
 	var selected_path := ""
 	if _selection != null and is_instance_valid(_selection):
 		selected_path = str(_level_root.get_path_to(_selection))
@@ -1099,6 +1134,9 @@ func _enter_validation_mode() -> void:
 
 func _exit_validation_mode() -> void:
 	if _level_root != null:
+		var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
+		if light_system != null:
+			light_system.reset_state()
 		_level_root.process_mode = Node.PROCESS_MODE_DISABLED
 	_validation_mode = false
 	_apply_validation_ui(false)
@@ -1213,7 +1251,8 @@ func _refresh_ray_preview() -> void:
 			continue
 		for trace in RayCaster.trace_all(
 			space, source.global_position, source.get_light_direction(),
-			source.get_light_color(), source.max_bounces
+			source.get_light_color(), source.max_bounces,
+			RayCaster.DEFAULT_MAX_LENGTH, RayCaster.DEFAULT_MAX_RAYS, false
 		):
 			segment_sets.append(trace.segments)
 			segment_colors.append(trace.segment_colors)
@@ -1227,6 +1266,7 @@ func _refresh_ray_preview() -> void:
 func _build_ui() -> void:
 	_build_toolbar()
 	_build_coverage_dialog()
+	_build_level_settings_dialog()
 	_build_palette()
 	_build_inspector()
 	_build_status_bar()
@@ -1305,6 +1345,9 @@ func _build_toolbar() -> void:
 	var coverage_label := Label.new()
 	coverage_label.text = "测试光线："
 	coverage_row.add_child(coverage_label)
+	var level_settings_button := _make_button("关卡玩法设置", _open_level_settings)
+	coverage_row.add_child(level_settings_button)
+	_toolbar_edit_controls.append(level_settings_button)
 	_coverage_config_button = _make_button("有光 0°→360°", func() -> void:
 		_coverage_start_spin.value = _coverage_lit_start
 		_coverage_end_spin.value = _coverage_lit_end
@@ -1359,6 +1402,120 @@ func _build_coverage_dialog() -> void:
 		set_full_coverage_light_range(
 			_coverage_start_spin.value, _coverage_end_spin.value
 		))
+
+
+func _build_level_settings_dialog() -> void:
+	_level_settings_dialog = ConfirmationDialog.new()
+	_level_settings_dialog.title = "关卡玩法设置"
+	_level_settings_dialog.ok_button_text = "应用设置"
+	_ui.add_child(_level_settings_dialog)
+	var content := VBoxContainer.new()
+	content.custom_minimum_size = Vector2(470.0, 0.0)
+	_level_settings_dialog.add_child(content)
+	var kind_row := HBoxContainer.new()
+	content.add_child(kind_row)
+	var kind_label := Label.new()
+	kind_label.text = "关卡类型"
+	kind_row.add_child(kind_label)
+	_level_kind_option = OptionButton.new()
+	_level_kind_option.add_item("固定解谜关")
+	_level_kind_option.add_item("限定搭建关")
+	kind_row.add_child(_level_kind_option)
+	var note := Label.new()
+	note.text = "限定搭建关中，场景里已摆放的元件默认对玩家锁定。"
+	content.add_child(note)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(470.0, 280.0)
+	content.add_child(scroll)
+	var inventory_grid := GridContainer.new()
+	inventory_grid.columns = 2
+	scroll.add_child(inventory_grid)
+	for entry in PaletteData.get_entries():
+		var key := str(entry["key"])
+		if key == "cocoon":
+			continue
+		var label := Label.new()
+		label.text = "%s 可用数量" % entry["label"]
+		inventory_grid.add_child(label)
+		var spin := SpinBox.new()
+		spin.min_value = 0.0
+		spin.max_value = 20.0
+		spin.step = 1.0
+		spin.update_on_text_changed = true
+		inventory_grid.add_child(spin)
+		_build_inventory_spins[key] = spin
+	var wire_label := Label.new()
+	wire_label.text = "玩家可接电线数量"
+	content.add_child(wire_label)
+	_build_wire_spin = SpinBox.new()
+	_build_wire_spin.min_value = 0.0
+	_build_wire_spin.max_value = 20.0
+	_build_wire_spin.step = 1.0
+	_build_wire_spin.update_on_text_changed = true
+	content.add_child(_build_wire_spin)
+	var bounds_label := Label.new()
+	bounds_label.text = "玩家可摆放区域：X、Y、宽、高"
+	content.add_child(bounds_label)
+	var bounds_row := HBoxContainer.new()
+	content.add_child(bounds_row)
+	for _index in 4:
+		var spin := SpinBox.new()
+		spin.min_value = 0.0
+		spin.max_value = 2000.0
+		spin.step = 8.0
+		spin.update_on_text_changed = true
+		spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bounds_row.add_child(spin)
+		_build_bounds_spins.append(spin)
+	_level_settings_dialog.confirmed.connect(_save_level_settings)
+
+
+func _open_level_settings() -> void:
+	var manager := _level_root.get_node_or_null("LevelManager") as LevelManager
+	if manager == null:
+		return
+	_level_kind_option.select(int(manager.level_kind))
+	for key in _build_inventory_spins:
+		var count := 0
+		var index := manager.build_item_keys.find(str(key))
+		if index >= 0 and index < manager.build_item_counts.size():
+			count = manager.build_item_counts[index]
+		(_build_inventory_spins[key] as SpinBox).value = count
+	_build_wire_spin.value = manager.build_wire_limit
+	var bounds := manager.build_bounds
+	for index in 4:
+		_build_bounds_spins[index].value = [
+			bounds.position.x, bounds.position.y, bounds.size.x, bounds.size.y
+		][index]
+	_level_settings_dialog.popup_centered(Vector2i(520, 570))
+
+
+func _save_level_settings() -> void:
+	var manager := _level_root.get_node_or_null("LevelManager") as LevelManager
+	if manager == null:
+		return
+	_push_undo()
+	manager.level_kind = _level_kind_option.selected as LevelManager.LevelKind
+	var keys := PackedStringArray()
+	var counts := PackedInt32Array()
+	for entry in PaletteData.get_entries():
+		var key := str(entry["key"])
+		if not _build_inventory_spins.has(key):
+			continue
+		var count := int((_build_inventory_spins[key] as SpinBox).value)
+		if count > 0:
+			keys.append(key)
+			counts.append(count)
+	manager.build_item_keys = keys
+	manager.build_item_counts = counts
+	manager.build_wire_limit = int(_build_wire_spin.value)
+	manager.build_bounds = Rect2(
+		_build_bounds_spins[0].value, _build_bounds_spins[1].value,
+		_build_bounds_spins[2].value, _build_bounds_spins[3].value
+	)
+	_dirty = true
+	_rebuild_inspector()
+	_update_status()
 
 
 func _build_palette() -> void:
@@ -1513,6 +1670,60 @@ func _build_block_inspector() -> void:
 	title.text = "◎ %s" % entry.get("label", PaletteData.entry_label(_selection.scene_file_path))
 	title.add_theme_font_size_override("font_size", 18)
 	_inspector_content.add_child(title)
+	var manager := _level_root.get_node_or_null("LevelManager") as LevelManager
+	if manager != null and manager.level_kind == LevelManager.LevelKind.BUILD and not _playtest_mode:
+		var path := str(_blocks_container().get_path_to(_selection))
+		var target_check := CheckBox.new()
+		target_check.text = "允许玩家给此预置机关接线"
+		target_check.tooltip_text = "此元件仍不可由玩家移动、旋转、删除。"
+		target_check.button_pressed = manager.build_wire_targets.has(path)
+		target_check.toggled.connect(func(allowed: bool) -> void:
+			_push_undo()
+			var targets := manager.build_wire_targets.duplicate()
+			if allowed and not targets.has(path):
+				targets.append(path)
+			elif not allowed:
+				var target_index := targets.find(path)
+				if target_index >= 0:
+					targets.remove_at(target_index)
+			manager.build_wire_targets = targets
+			_dirty = true
+			_update_status())
+		_inspector_content.add_child(target_check)
+		if _selection is TriggerSwitch or _selection is PressureSensor:
+			var source_check := CheckBox.new()
+			source_check.text = "允许玩家从此预置开关接线"
+			source_check.button_pressed = manager.build_wire_sources.has(path)
+			source_check.toggled.connect(func(allowed: bool) -> void:
+				_push_undo()
+				var sources := manager.build_wire_sources.duplicate()
+				if allowed and not sources.has(path):
+					sources.append(path)
+				elif not allowed:
+					var source_index := sources.find(path)
+					if source_index >= 0:
+						sources.remove_at(source_index)
+				manager.build_wire_sources = sources
+				_dirty = true
+				_update_status())
+			_inspector_content.add_child(source_check)
+		if _selection is LightSource:
+			var aim_check := CheckBox.new()
+			aim_check.text = "允许玩家瞄准此预置光源"
+			aim_check.button_pressed = manager.build_aimable_sources.has(path)
+			aim_check.toggled.connect(func(allowed: bool) -> void:
+				_push_undo()
+				var sources := manager.build_aimable_sources.duplicate()
+				if allowed and not sources.has(path):
+					sources.append(path)
+				elif not allowed:
+					var source_index := sources.find(path)
+					if source_index >= 0:
+						sources.remove_at(source_index)
+				manager.build_aimable_sources = sources
+				_dirty = true
+				_update_status())
+			_inspector_content.add_child(aim_check)
 
 	_inspector_content.add_child(_section_label("变换"))
 	var transform_grid := GridContainer.new()
@@ -1646,12 +1857,19 @@ func _build_wire_inspector() -> void:
 		set_wire_property(index, &"move_offset", Vector2(link.move_offset.x, v), false))
 	_add_spin(grid, "旋转°", link.rotate_degrees, 15.0, func(v: float) -> void:
 		set_wire_property(index, &"rotate_degrees", v, false))
-	_add_spin(grid, "运动时长(秒)", link.duration, 0.1, func(v: float) -> void:
-		set_wire_property(index, &"duration", v, false))
+	var move_speed_spin := _add_spin(grid, "移动速度/秒", link.move_speed, 10.0,
+		func(v: float) -> void:
+			set_wire_property(index, &"move_speed", v, false))
+	move_speed_spin.min_value = 1.0
+	var rotate_speed_spin := _add_spin(grid, "旋转速度°/秒", link.rotate_speed, 10.0,
+		func(v: float) -> void:
+			set_wire_property(index, &"rotate_speed", v, false))
+	rotate_speed_spin.min_value = 1.0
 	_add_check(grid, "一直重复动作", link.repeat, func(on: bool) -> void:
 		set_wire_property(index, &"repeat", on))
-	_add_check(grid, "断电后恢复原状", link.restore_on_off, func(on: bool) -> void:
-		set_wire_property(index, &"restore_on_off", on))
+	if not (wire["source"] is TriggerSwitch):
+		_add_check(grid, "断电后恢复原状", link.restore_on_off, func(on: bool) -> void:
+			set_wire_property(index, &"restore_on_off", on))
 
 	if not _playtest_mode:
 		var preview_button := Button.new()
@@ -1664,7 +1882,7 @@ func _build_wire_inspector() -> void:
 		_inspector_content.add_child(preview_button)
 
 	var hint := Label.new()
-	hint.text = "开关 ON：机关从原位运动到动作位（位移+旋转同一动画）。\n开关 OFF：恢复原状，或停在当前位。\n预览动作位：编辑时直接查看目标结果，保存时不会写入预览位置。"
+	hint.text = "光线命中开关后，光线结束才开始运动；勾选重复后持续往返。\n移动和旋转同时开始，按较慢的一项决定单程时间。\n预览动作位不会写入保存文件。"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_color_override("font_color", Color(0.75, 0.8, 0.7))
 	_inspector_content.add_child(hint)
@@ -1766,7 +1984,8 @@ func _link_summary(link: ActionLink) -> String:
 	parts.append("移(%d,%d)" % [int(link.move_offset.x), int(link.move_offset.y)])
 	if absf(link.rotate_degrees) > 0.01:
 		parts.append("转%d°" % int(link.rotate_degrees))
-	parts.append("%.1fs" % link.duration)
+	parts.append("移速%d/秒" % roundi(link.move_speed))
+	parts.append("转速%d°/秒" % roundi(link.rotate_speed))
 	if link.repeat:
 		parts.append("循环")
 	if not link.restore_on_off:

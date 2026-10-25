@@ -61,8 +61,8 @@ func _run_test() -> void:
 			actuator.position.distance_to(actuator_origin + Vector2(0, -60)) < 1.0)
 	_move_source(Vector2(100, 50), 0.0)
 	await _settle(40)
-	_check("阶段2 镜面：开关 OFF 后镜面恢复原状",
-			actuator.position.distance_to(actuator_origin) < 1.0)
+	_check("阶段2 镜面：光线离开后机关保持动作位",
+			actuator.position.distance_to(actuator_origin + Vector2(0, -60)) < 1.0)
 	actuator_link.restore_on_off = false
 	_move_source(Vector2(100, 100), 0.0)
 	await _settle(40)
@@ -85,7 +85,8 @@ func _run_test() -> void:
 			absf(angle_difference(actuator.rotation, deg_to_rad(30.0))) < 0.01)
 	_move_source(Vector2(100, 50), 0.0)
 	await _settle(40)
-	_check("阶段2 镜面：旋转后断电恢复", absf(actuator.rotation) < 0.01)
+	_check("阶段2 镜面：光线离开后保持旋转", absf(
+		angle_difference(actuator.rotation, deg_to_rad(30.0))) < 0.01)
 	actuator_link.move_offset = Vector2(0, -60)
 	actuator_link.rotate_degrees = 0.0
 
@@ -106,10 +107,20 @@ func _run_test() -> void:
 	mirror_link.reset_state()
 	_check("阶段3 镜面：重置瞬间回到原位", mirror.position.distance_to(Vector2(300, 500)) < 0.01)
 	await _settle(2)
-	_check("阶段3 镜面：开关仍 ON，复查后重新动起来", mirror.position.distance_to(Vector2(300, 500)) > 1.0)
+	_check("阶段3 镜面：重置后不因旧开关状态自动重启",
+			mirror.position.distance_to(Vector2(300, 500)) < 0.01)
+	_move_source(Vector2(100, 500), 0.0)
+	await _settle(5)
+	_move_source(Vector2(100, 100), 0.0)
+	await _settle(30)
+	_check("阶段3 镜面：新的触发再次启动往返",
+			mirror.position.distance_to(Vector2(300, 500)) > 1.0)
 	_move_source(Vector2(100, 500), 0.0)
 	await _settle(40)
-	_check("阶段3 镜面：开关 OFF 后恢复原位", mirror.position.distance_to(Vector2(300, 500)) < 1.0)
+	_check("阶段3 镜面：光线离开后持续往返", mirror_link.is_active())
+	mirror_link.reset_state()
+	await _settle(2)
+	_check("阶段3 镜面：重置后回原位", mirror.position.distance_to(Vector2(300, 500)) < 1.0)
 	_check("阶段3 镜面：恢复后重新点亮接收区", recv_below.is_lit())
 
 	# —— 阶段 4：石块重力、落地碰撞与重置 ——
@@ -126,6 +137,7 @@ func _run_test() -> void:
 	var falling_block := StoneBlockScene.instantiate() as StoneBlock
 	falling_block.position = Vector2(850, 100)
 	add_child(falling_block)
+	_check("阶段4 石块：默认不能用鼠标拖动", not falling_block.player_draggable)
 	await _settle(80)
 	_check("阶段4 石块：受重力下落并停在地面",
 			falling_block.is_on_floor() and absf(falling_block.position.y - 272.0) < 1.0)

@@ -116,8 +116,13 @@ func _run() -> void:
 	_check(LevelFileIO.take_level_to_edit() == "res://scenes/levels/level_01.tscn",
 			"编辑队列交接正确路径")
 	_check(LevelFileIO.take_level_to_edit().is_empty(), "编辑队列取出后清空")
-	var draft_errors := LevelFileIO.validate_level_for_publication(
-			"res://scenes/levels/level_07_说明.tscn")
+	var draft_level := (load(LevelFileIO.BASE_SCENE_DEFAULT) as PackedScene).instantiate()
+	var draft_source := (load("res://blocks/light_source/light_source.tscn") as PackedScene).instantiate()
+	(draft_level.get_node("Blocks") as Node).add_child(draft_source)
+	var draft_path := "user://draft_missing_goal_test.tscn"
+	LevelFileIO.write_text(draft_path, LevelFileIO.serialize_level(draft_level))
+	draft_level.free()
+	var draft_errors := LevelFileIO.validate_level_for_publication(draft_path)
 	_check(draft_errors.has("至少需要一个通关目标"), "缺少通关目标的草稿不能发布")
 
 	# 6. capture/restore 保留传送门的编号配对（不再依赖 _ready 按距离自动配对）

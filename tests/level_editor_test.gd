@@ -203,7 +203,8 @@ func _run() -> void:
 	# 实时验证运行真实信号和 Tween；退出后必须恢复进入前快照。
 	# 光线系统会持续重算照射状态；锁存开关保证手动注入的上升沿可观察。
 	_editor.set_selected_property(&"latch", true)
-	_editor.set_wire_property(0, &"duration", 0.01)
+	_editor.set_wire_property(0, &"move_speed", 10000.0)
+	_editor.set_wire_property(0, &"rotate_speed", 10000.0)
 	var validation_text := _editor.serialize()
 	var validation_toggle := _find_base_button(_editor, "实时验证")
 	var coverage_toggle := _find_base_button(_editor, "全光线覆盖")
@@ -476,6 +477,42 @@ func _run() -> void:
 	_check("普通触发机关可启用颜色感应",
 			filtered_trigger != null and filtered_trigger.match_color
 			and filtered_trigger.color_filter.is_equal_approx(Color(1.0, 0.25, 0.25)))
+	var settings_button := _find_base_button(_editor, "关卡玩法设置")
+	_check("编辑器提供两类关卡设置入口", settings_button != null)
+	if settings_button != null:
+		settings_button.pressed.emit()
+		var kind_option := _editor.get("_level_kind_option") as OptionButton
+		var inventory_spins: Dictionary = _editor.get("_build_inventory_spins")
+		var wire_spin := _editor.get("_build_wire_spin") as SpinBox
+		var settings_dialog := _editor.get("_level_settings_dialog") as ConfirmationDialog
+		kind_option.select(LevelManager.LevelKind.BUILD)
+		(inventory_spins["mirror"] as SpinBox).value = 2.0
+		wire_spin.value = 1.0
+		settings_dialog.confirmed.emit()
+		settings_dialog.hide()
+	var saved_manager := root.get_node("LevelManager") as LevelManager
+	_check("编辑器可配置搭建元件数量与玩家电线数量",
+		saved_manager.level_kind == LevelManager.LevelKind.BUILD
+		and saved_manager.build_item_keys.has("mirror")
+		and saved_manager.build_wire_limit == 1)
+	_editor.select(plain_refract)
+	var player_target_check := _find_base_button(_editor, "允许玩家给此预置机关接线")
+	_check("可单独开放预置机关的玩家接线权限", player_target_check != null)
+	if player_target_check != null:
+		player_target_check.set_pressed_no_signal(true)
+		player_target_check.toggled.emit(true)
+	_check("预置机关权限写入关卡配置",
+		saved_manager.build_wire_targets.has("RefractSurface")
+		and _editor.serialize().contains("build_wire_targets"))
+	_editor.select(trigger)
+	var player_source_check := _find_base_button(_editor, "允许玩家从此预置开关接线")
+	_check("可单独开放预置开关的接线权限", player_source_check != null)
+	if player_source_check != null:
+		player_source_check.set_pressed_no_signal(true)
+		player_source_check.toggled.emit(true)
+	_check("预置开关权限写入关卡配置",
+		saved_manager.build_wire_sources.has("TriggerSwitch")
+		and _editor.serialize().contains("build_wire_sources"))
 
 	_finish()
 

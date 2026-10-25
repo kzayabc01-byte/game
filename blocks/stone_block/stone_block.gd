@@ -2,8 +2,8 @@
 class_name StoneBlock
 extends CharacterBody2D
 
-## 石块：受重力影响的遮光重物（碰撞层 1），按住拖拽挪动，配合压力传感器使用。
-## 根节点用 CharacterBody2D：重力和拖拽都由代码驱动，并通过运动 API 保留碰撞。
+## 石块：受重力影响的遮光重物（碰撞层 1），默认不能由玩家拖动。
+## 根节点用 CharacterBody2D：重力由代码驱动，并通过运动 API 保留碰撞。
 ## 自动加入 heavy_objects 组（压力传感器只认这个组的物体）。
 ## 按 R 重置回到摆放位置。
 
@@ -14,6 +14,7 @@ const GRAB_RADIUS := 44.0  # 多近可以按住拖拽
 @export var gravity_enabled: bool = true
 @export_range(0.0, 4.0, 0.05) var gravity_scale: float = 1.0
 @export_range(100.0, 5000.0, 50.0) var terminal_speed: float = 1600.0
+@export var player_draggable: bool = false
 
 var _dragging: bool = false
 var _grab_offset: Vector2 = Vector2.ZERO
@@ -60,8 +61,12 @@ func reset_state() -> void:
 	_drag_target = global_position
 
 
+func set_build_origin() -> void:
+	_initial_position = position
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if Engine.is_editor_hint():
+	if Engine.is_editor_hint() or not player_draggable:
 		return
 	var motion := event as InputEventMouseMotion
 	if motion != null and _dragging:

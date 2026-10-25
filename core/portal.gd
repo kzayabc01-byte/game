@@ -137,8 +137,17 @@ func get_approach_sign(in_dir: Vector2) -> float:
 # ---------- 光路契约 ----------
 
 func on_ray(in_dir: Vector2, _normal: Vector2, hit_pos: Vector2, energy: float) -> Array[Dictionary]:
+	return _route_ray(in_dir, hit_pos, energy, true)
+
+
+func on_ray_preview(in_dir: Vector2, _normal: Vector2, hit_pos: Vector2, energy: float) -> Array[Dictionary]:
+	return _route_ray(in_dir, hit_pos, energy, false)
+
+
+func _route_ray(in_dir: Vector2, hit_pos: Vector2, energy: float, emit_event: bool) -> Array[Dictionary]:
 	if not is_linked():
-		_warn_once_unlinked()
+		if emit_event:
+			_warn_once_unlinked()
 		return []  # 没配对：吞掉光线（比穿透安全，避免玩家白忙）
 
 	var approach := get_approach_sign(in_dir)
@@ -153,7 +162,8 @@ func on_ray(in_dir: Vector2, _normal: Vector2, hit_pos: Vector2, energy: float) 
 		return []
 
 	var exit_pos := map_point(hit_pos) + out_dir * RayCaster.BOUNCE_OFFSET
-	teleported.emit(self, linked_portal)
+	if emit_event:
+		teleported.emit(self, linked_portal)
 	var ray := OpticalSurface.make_ray(exit_pos, out_dir, out_energy)
 	ray["teleport"] = true  # 告诉光线系统：这里要断开折线，别把 A 和 B 连成一条直线
 	return [ray]

@@ -73,9 +73,11 @@ static func trace_all(
 	color: Color = Color.WHITE,
 	max_bounces: int = DEFAULT_MAX_BOUNCES,
 	max_length: float = DEFAULT_MAX_LENGTH,
-	max_rays: int = DEFAULT_MAX_RAYS
+	max_rays: int = DEFAULT_MAX_RAYS,
+	record_hits: bool = true
 ) -> Array[LightTrace]:
-	return _trace(space, origin, direction, color, 1.0, false, 0, max_bounces, max_length, max_rays)
+	return _trace(space, origin, direction, color, 1.0, false, 0, max_bounces,
+		max_length, max_rays, record_hits)
 
 
 ## 契约版追踪（光路组）：每段一份结果，总段数预算 max_segments。
@@ -88,7 +90,7 @@ static func trace_multi(
 	max_length: float = DEFAULT_MAX_LENGTH
 ) -> Array[LightTrace]:
 	return _trace(space, origin, direction, Color.WHITE, 1.0, true, max_segments,
-			DEFAULT_MAX_BOUNCES, max_length, DEFAULT_MAX_RAYS)
+			DEFAULT_MAX_BOUNCES, max_length, DEFAULT_MAX_RAYS, true)
 
 
 ## 兼容旧接口：单光线追踪（忽略分光，取第一条光线）
@@ -113,7 +115,8 @@ static func _trace(
 	budget: int,
 	max_bounces: int,
 	max_length: float,
-	max_rays: int
+	max_rays: int,
+	record_hits: bool
 ) -> Array[LightTrace]:
 	var traces: Array[LightTrace] = []
 	var queue: Array[_PendingRay] = []
@@ -134,7 +137,7 @@ static func _trace(
 		elif traces.size() >= max_rays:
 			break
 		var ray := queue.pop_front() as _PendingRay
-		_advance_ray(space, ray, queue, traces, budget_state, per_segment)
+		_advance_ray(space, ray, queue, traces, budget_state, per_segment, record_hits)
 	return traces
 
 
@@ -145,7 +148,8 @@ static func _advance_ray(
 	queue: Array[_PendingRay],
 	traces: Array[LightTrace],
 	budget_state: Dictionary,
-	per_segment: bool
+	per_segment: bool,
+	record_hits: bool
 ) -> void:
 	if per_segment:
 		if budget_state["left"] <= 0:
@@ -175,7 +179,8 @@ static func _advance_ray(
 				next_direction, ray.color, ray.energy, false))
 	elif collider.has_method("on_ray"):
 		# 光路表面（折射/分光/传送门/冰川……）：出射光线由表面自己决定
-		_spawn_from_surface(ray, collider, hit.normal, endpoint, queue, per_segment)
+		_spawn_from_surface(ray, collider, hit.normal, endpoint, queue, per_segment,
+			record_hits)
 		_finish_ray(traces, ray, per_segment)
 	else:
 		_finish_ray(traces, ray, per_segment)  # 遮光物：光线到此为止
@@ -188,7 +193,8 @@ static func _spawn_from_surface(
 	normal: Vector2,
 	hit_pos: Vector2,
 	queue: Array[_PendingRay],
-	per_segment: bool
+	per_segment: bool,
+	record_hits: bool
 ) -> void:
 	# 同一条光线以同一方向再次进入同一表面 = 传送门成环，直接丢弃
 	var key := "%d@%d" % [surface.get_instance_id(), int(ray.direction.angle() * 1000.0)]
@@ -196,7 +202,10 @@ static func _spawn_from_surface(
 		return
 	ray.visited[key] = true
 
-	var outs: Array = surface.call("on_ray", ray.direction, normal, hit_pos, ray.energy)
+	var method_name := "on_ray"
+	if not record_hits and surface.has_method("on_ray_preview"):
+		method_name = "on_ray_preview"
+	var outs: Array = surface.call(method_name, ray.direction, normal, hit_pos, ray.energy)
 	var spawned := 0
 	for out in outs:
 		if spawned >= DEFAULT_MAX_SPLIT:

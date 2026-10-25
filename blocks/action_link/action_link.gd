@@ -3,9 +3,8 @@ class_name ActionLink
 extends Node2D
 
 ## 电线（动作连线）：关卡里不可见的节点，把「开关信号」翻译成「机关动作」。
-## 开关 ON → 机关从原位运动到动作位（move_offset 位移 + rotate_degrees 旋转，同一动画）；
-## OFF → restore_on_off 为真时回原位，否则停在当前位；
-## repeat 为真时 ON 期间在原位↔动作位往返循环。
+## 光线开关触发后，机关完整执行动作；重复模式持续往返。
+## 压力传感器仍可在解除压力时按 restore_on_off 返回原位。
 ## 保存进关卡文件的就是这个节点（target_node + 动作参数）加一条开关信号连接；
 ## 游戏里无外观 → 电线只对创作者可见（编辑器 WireLayer 把它画成曲线）。
 ## 按 R 重置：机关回原位；若开关仍然 ON（光一直照着 / 重物一直压着）会延迟复查重放。
@@ -16,7 +15,9 @@ const METHOD_NAME := &"_on_signal"
 @export var target_node: NodePath
 @export var move_offset: Vector2 = Vector2.ZERO
 @export var rotate_degrees: float = 0.0
-@export var duration: float = 0.8
+@export_storage var duration: float = 0.8
+@export var move_speed: float = 120.0
+@export var rotate_speed: float = 90.0
 @export var repeat: bool = false
 @export var restore_on_off: bool = true
 
@@ -82,6 +83,9 @@ func is_editor_preview_active() -> bool:
 
 ## 开关信号入口：active_changed / pressed_changed 都连到这里
 func _on_signal(active: bool) -> void:
+	# Light switches deliver a pulse: losing illumination must not cancel the action.
+	if not active and _is_light_switch_wire():
+		return
 	if _active == active:
 		return
 	_editor_preview_active = false
@@ -103,6 +107,8 @@ func reset_state() -> void:
 ## 通过入向连接找到开关并查询其当前状态（重置后重新同步用）。
 ## 手改关卡可能把多个开关接到同一条电线上：任一开关 ON 即算 ON。
 func _recheck_source() -> void:
+	if _is_light_switch_wire():
+		return
 	var found := false
 	var any_active := false
 	for conn in get_incoming_connections():
@@ -128,31 +134,34 @@ func _apply() -> void:
 	_kill_tween()
 	var action_position := _origin_position + move_offset
 	var action_rotation := _origin_rotation + deg_to_rad(rotate_degrees)
-	var time := maxf(duration, 0.01)
+	var move_time := move_offset.length() / maxf(move_speed, 0.01)
+	var rotate_time := absf(rotate_degrees) / maxf(rotate_speed, 0.01)
+	if move_offset.is_zero_approx() and is_zero_approx(rotate_degrees):
+		return
+	move_time = maxf(move_time, 0.01)
+	rotate_time = maxf(rotate_time, 0.01)
 	if _active:
 		_tween = create_tween()
 		if repeat:
 			# 循环：原位 → 动作位 → 原位，无限往返
 			_tween.set_loops()
-			_tween.tween_property(_target, "position", action_position, time) \
-					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			_tween.parallel().tween_property(_target, "rotation", action_rotation, time) \
-					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			_tween.tween_property(_target, "position", _origin_position, time) \
-					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			_tween.parallel().tween_property(_target, "rotation", _origin_rotation, time) \
-					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			_tween.tween_property(_target, "position", action_position, move_time)
+			_tween.parallel().tween_property(_target, "rotation", action_rotation, rotate_time)
+			_tween.tween_property(_target, "position", _origin_position, move_time)
+			_tween.parallel().tween_property(_target, "rotation", _origin_rotation, rotate_time)
 		else:
-			_tween.tween_property(_target, "position", action_position, time) \
-					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			_tween.parallel().tween_property(_target, "rotation", action_rotation, time) \
-					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			_tween.tween_property(_target, "position", action_position, move_time)
+			_tween.parallel().tween_property(_target, "rotation", action_rotation, rotate_time)
 	elif restore_on_off:
 		_tween = create_tween()
-		_tween.tween_property(_target, "position", _origin_position, time) \
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		_tween.parallel().tween_property(_target, "rotation", _origin_rotation, time) \
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		var return_move_time := maxf(
+			_target.position.distance_to(_origin_position) / maxf(move_speed, 0.01), 0.01)
+		var return_rotate_time := maxf(
+			absf(rad_to_deg(_target.rotation - _origin_rotation)) / maxf(rotate_speed, 0.01),
+			0.01)
+		_tween.tween_property(_target, "position", _origin_position, return_move_time)
+		_tween.parallel().tween_property(
+			_target, "rotation", _origin_rotation, return_rotate_time)
 	# restore_on_off 为假且 OFF：停在当前位（半路断开也停，tween 已 kill）
 
 
@@ -160,3 +169,11 @@ func _kill_tween() -> void:
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 	_tween = null
+
+
+func _is_light_switch_wire() -> bool:
+	for connection in get_incoming_connections():
+		var signal_value: Signal = connection.get("signal")
+		if signal_value.get_object() is TriggerSwitch:
+			return true
+	return false

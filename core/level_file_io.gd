@@ -23,6 +23,10 @@ const FLOAT_TOLERANCE := 1e-6
 const LEVEL_METADATA_KEYS: Array[StringName] = [
 	&"level_name", &"publication_state", &"chapter", &"order_in_chapter",
 	&"difficulty", &"mechanic_tags",
+		&"level_kind", &"build_item_keys", &"build_item_counts",
+		&"build_bounds", &"build_wire_limit", &"build_wire_targets",
+		&"build_aimable_sources",
+		&"build_wire_sources",
 ]
 
 static var _queued_level_to_edit: String = ""
@@ -62,6 +66,7 @@ static func read_level_metadata(path: String) -> Dictionary:
 		&"order_in_chapter": manager.order_in_chapter,
 		&"difficulty": manager.difficulty,
 		&"mechanic_tags": manager.mechanic_tags.duplicate(),
+		&"level_kind": int(manager.level_kind),
 	}
 	level_root.free()
 	return result
@@ -460,6 +465,11 @@ static func _format_value(value: Variant, level_root: Node, ext_map: Dictionary)
 			return "&\"%s\"" % String(value).c_escape()
 		TYPE_VECTOR2:
 			return "Vector2(%s, %s)" % [_format_float(value.x), _format_float(value.y)]
+		TYPE_RECT2:
+			return "Rect2(%s, %s, %s, %s)" % [
+				_format_float(value.position.x), _format_float(value.position.y),
+				_format_float(value.size.x), _format_float(value.size.y),
+			]
 		TYPE_COLOR:
 			return "Color(%s, %s, %s, %s)" % [
 				_format_float(value.r), _format_float(value.g),
@@ -472,6 +482,11 @@ static func _format_value(value: Variant, level_root: Node, ext_map: Dictionary)
 			for item in value:
 				parts.append("\"%s\"" % String(item).c_escape())
 			return "PackedStringArray(%s)" % ", ".join(parts)
+		TYPE_PACKED_INT32_ARRAY:
+			var parts := PackedStringArray()
+			for item in value:
+				parts.append(str(item))
+			return "PackedInt32Array(%s)" % ", ".join(parts)
 		TYPE_OBJECT:
 			if value is PackedScene:
 				if value.resource_path.is_empty():

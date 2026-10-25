@@ -20,9 +20,11 @@ const ANGLE_LABEL_OFFSET := Vector2(0.0, -36.0)
 @export var rotate_step_degrees: float = 5.0
 @export var fine_step_degrees: float = 1.0
 @export var light_color: Color = Color(1.0, 0.85, 0.3)  # 初始光线颜色（触发机关可选颜色过滤）
+@export var follow_mouse: bool = false
 
-var _dragging: bool = false
 var _initial_rotation: float = 0.0
+var _aim_offset_degrees := 0.0
+static var _selected_source_id: int = 0
 
 
 func _enter_tree() -> void:
@@ -62,30 +64,27 @@ func get_angle_label_text() -> String:
 
 func reset_state() -> void:
 	rotation = _initial_rotation
+	_aim_offset_degrees = 0.0
 	direction_changed.emit(rotation)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if Engine.is_editor_hint():
 		return
-	var motion := event as InputEventMouseMotion
-	if motion != null and _dragging:
-		_aim_at(get_global_mouse_position())
-		get_viewport().set_input_as_handled()
-		return
 	var button := event as InputEventMouseButton
 	if button == null or button.button_index != MOUSE_BUTTON_LEFT:
 		return
 	if button.pressed and global_position.distance_to(get_global_mouse_position()) <= GRAB_RADIUS:
-		_dragging = true
+		_selected_source_id = get_instance_id()
 		get_viewport().set_input_as_handled()
-	elif not button.pressed:
-		_dragging = false
 
 
 func _process(_delta: float) -> void:
-	if Engine.is_editor_hint():
+	if Engine.is_editor_hint() or not follow_mouse:
 		return
+	if not _is_selected_source():
+		return
+	_aim_at(get_global_mouse_position())
 	var step := rotate_step_degrees
 	if Input.is_physical_key_pressed(KEY_SHIFT):
 		step = fine_step_degrees
@@ -95,14 +94,23 @@ func _process(_delta: float) -> void:
 		_rotate_by(-step)
 
 
+func _is_selected_source() -> bool:
+	var selected := instance_from_id(_selected_source_id) as LightSource
+	if selected == null or not selected.is_inside_tree():
+		var sources := get_tree().get_nodes_in_group(SOURCE_GROUP)
+		if not sources.is_empty():
+			_selected_source_id = (sources[0] as Node).get_instance_id()
+	return _selected_source_id == get_instance_id()
+
+
 func _rotate_by(degrees: float) -> void:
-	rotation += deg_to_rad(degrees)
-	direction_changed.emit(rotation)
+	_aim_offset_degrees += degrees
+	_aim_at(get_global_mouse_position())
 
 
 func _aim_at(target: Vector2) -> void:
 	var previous := rotation
-	rotation = (target - global_position).angle()
+	rotation = (target - global_position).angle() + deg_to_rad(_aim_offset_degrees)
 	if not is_equal_approx(previous, rotation):
 		direction_changed.emit(rotation)
 

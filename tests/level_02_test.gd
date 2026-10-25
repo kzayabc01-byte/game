@@ -36,6 +36,10 @@ func _run_test() -> void:
 		_finish()
 		return
 	_check("关卡节点齐全", true)
+	source.follow_mouse = false
+	var manager := get_parent().get_node("LevelManager") as LevelManager
+	manager.publication_state = LevelManager.PublicationState.DRAFT
+	var light := get_parent().get_node("LightSystem") as LightSystem
 
 	# 第一步：石块拖到压力传感器上 → 镜面开始移动
 	block.position = sensor.position
@@ -45,10 +49,12 @@ func _run_test() -> void:
 	await _settle(30)
 	_check("第一步：镜面开始移动", mirror.position.distance_to(start_pos) > 1.0)
 
-	# 第二步：保持水平光束，等移动镜面扫过蚕茧 → 胜利。
+	# 第二步：等镜面经过水平光路时发射，光线结束后判定胜利。
 	source.rotation = 0.0
 	var won := false
-	for _frame in 450:
+	for _frame in 600:
+		if absf(mirror.position.y - 400.0) < 7.0 and not light.is_pulse_active():
+			light.request_fire()
 		await get_tree().physics_frame
 		if cocoon.is_lit():
 			won = true
