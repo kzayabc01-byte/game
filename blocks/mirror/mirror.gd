@@ -7,6 +7,9 @@ extends StaticBody2D
 
 
 func _draw() -> void:
+	var art := get_node_or_null("Art") as Sprite2D
+	if art != null and art.texture != null:
+		return
 	# 占位外观：银色镜面 + 法线小标记
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if shape_node == null or not shape_node.shape is RectangleShape2D:

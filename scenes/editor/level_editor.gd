@@ -2427,4 +2427,4 @@ func _on_gizmo_transform_committed() -> void:
 
 
 func _go_to_menu() -> void:
-	get_tree().change_scene_to_file(MENU_SCENE)
+	SceneTransition.change_to_file(MENU_SCENE)

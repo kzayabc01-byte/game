@@ -34,6 +34,9 @@ func on_ray(in_dir: Vector2, _normal: Vector2, hit_pos: Vector2, energy: float) 
 
 
 func _draw() -> void:
+	var art := get_node_or_null("Art") as Sprite2D
+	if art != null and art.texture != null:
+		return
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	var size := Vector2(24.0, 96.0)
 	if shape_node != null and shape_node.shape is RectangleShape2D:

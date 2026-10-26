@@ -1,6 +1,7 @@
 extends Control
 
-const LEVEL_SELECT_SCENE := "res://scenes/LevelSelectPage/LevelSelectPage.tscn"
+const LEVEL_SELECT_SCENE := "res://scenes/LevelSelectPage/LevelSelectMap.tscn"
+const WORKSHOP_SCENE := "res://scenes/LevelSelectPage/LevelSelectPage.tscn"
 
 func _ready() -> void:
 	$MenuGroup/StartButton.pressed.connect(_on_start_pressed)
@@ -23,9 +24,7 @@ func _on_workshop_pressed() -> void:
 
 
 func _open_level_select(workshop: bool) -> void:
-	LevelSelectPage.open_workshop_on_entry = workshop
-	if get_tree().change_scene_to_file(LEVEL_SELECT_SCENE) != OK:
-		LevelSelectPage.open_workshop_on_entry = false
+	SceneTransition.change_to_file(WORKSHOP_SCENE if workshop else LEVEL_SELECT_SCENE)
 
 
 func _on_exit_pressed() -> void:

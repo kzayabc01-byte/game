@@ -25,6 +25,11 @@ func _ready() -> void:
 	_check("主页提供选择关卡", home_texts.has("选择关卡"))
 	_check("主页提供关卡工坊", home_texts.has("关卡工坊"))
 	_check("主页提供退出游戏", home_texts.has("退出游戏"))
+	var home_constants: Dictionary = home.get_script().get_script_constant_map()
+	_check("主页正式选关连接地图场景", home_constants.get("LEVEL_SELECT_SCENE")
+			== "res://scenes/LevelSelectPage/LevelSelectMap.tscn")
+	_check("主页工坊保留原管理页面", home_constants.get("WORKSHOP_SCENE")
+			== "res://scenes/LevelSelectPage/LevelSelectPage.tscn")
 	home.queue_free()
 	await get_tree().process_frame
 
@@ -43,8 +48,8 @@ func _ready() -> void:
 
 	var original_save_path := ProgressStore.save_path
 	ProgressStore.save_path = "user://main_menu_progress_%d.json" % Time.get_ticks_usec()
-	_check("关卡选择页默认显示章节入口",
-			(menu.get_node("Title") as Label).text == "选择章节")
+	_check("旧目录页面默认显示关卡工坊",
+			(menu.get_node("Title") as Label).text == "关卡工坊")
 	menu.show_workshop()
 	_check("关卡选择页可以打开工坊",
 			(menu.get_node("Title") as Label).text == "关卡工坊")
@@ -82,6 +87,8 @@ func _ready() -> void:
 	get_tree().current_scene = gameplay
 	await get_tree().process_frame
 	var gameplay_manager := gameplay.get_node("LevelManager") as LevelManager
+	_check("游玩中的选关入口连接新地图", LevelManager.LEVEL_SELECT_SCENE
+			== "res://scenes/LevelSelectPage/LevelSelectMap.tscn")
 	var coins_before := ProgressStore.get_coins()
 	gameplay_manager._on_cocoon_activated()
 	await get_tree().process_frame

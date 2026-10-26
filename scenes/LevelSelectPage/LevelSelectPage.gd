@@ -1,14 +1,15 @@
 class_name LevelSelectPage
 extends Control
 
-## 关卡选择与关卡工坊共用的目录界面。
-## 正式关卡只出现在关卡选择；全部草稿与正式关卡都由 debug 工坊统一维护。
+## 开发用关卡工坊；正式选关入口已迁到 LevelSelectMap.tscn。
+## 保留旧目录 API，兼容现有的发布流程验收与工具调用。
 
 const LEVEL_DIR := "res://scenes/levels"
 const LEVEL_PREFIX := "level_"
 const EDITOR_SCENE := "res://scenes/editor/level_editor.tscn"
 const MAIN_MENU_SCENE := "res://scenes/MainMenu/MainMenu.tscn"
 
+## 旧入口的兼容字段；工坊现在默认显示，不再依赖该标记。
 static var open_workshop_on_entry := false
 
 @onready var _title_label: Label = $Title
@@ -33,11 +34,8 @@ func _ready() -> void:
 	_quit_button.pressed.connect(_on_quit_pressed)
 	_build_publish_dialog()
 	_reload_records()
-	if open_workshop_on_entry:
-		open_workshop_on_entry = false
-		_show_workshop()
-	else:
-		_show_start_game()
+	open_workshop_on_entry = false
+	_show_workshop()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -138,7 +136,7 @@ func duplicate_level_as_draft(path: String) -> String:
 
 
 func _go_to_main_menu() -> void:
-	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+	SceneTransition.change_to_file(MAIN_MENU_SCENE)
 
 
 func _show_start_game() -> void:

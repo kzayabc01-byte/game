@@ -27,7 +27,7 @@ enum LevelKind { FIXED, BUILD }
 @export var next_level_scene: PackedScene
 @export var main_menu_scene: PackedScene = preload("res://scenes/MainMenu/MainMenu.tscn")
 
-const LEVEL_SELECT_SCENE := "res://scenes/LevelSelectPage/LevelSelectPage.tscn"
+const LEVEL_SELECT_SCENE := "res://scenes/LevelSelectPage/LevelSelectMap.tscn"
 
 @onready var _win_label: Label = $LevelHUD/WinLabel
 @onready var _hint_label: Label = $LevelHUD/HintLabel
@@ -128,7 +128,6 @@ func _on_restart_pressed() -> void:
 
 
 func _on_select_pressed() -> void:
-	LevelSelectPage.open_workshop_on_entry = false
 	SceneTransition.change_to_file(LEVEL_SELECT_SCENE)
 
 

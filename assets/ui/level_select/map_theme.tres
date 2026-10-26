@@ -1,0 +1,19 @@
+[gd_resource type="Theme" load_steps=3 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/NotoSansSC-Regular.otf" id="1_font"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
+
+[resource]
+default_font = ExtResource("1_font")
+default_font_size = 26
+Button/colors/font_color = Color(0.188, 0.212, 0.22, 1)
+Button/colors/font_hover_color = Color(0.78, 0.44, 0.35, 1)
+Button/colors/font_pressed_color = Color(0.72, 0.39, 0.31, 1)
+Button/colors/font_disabled_color = Color(0.61, 0.62, 0.6, 1)
+Button/styles/normal = SubResource("StyleBoxEmpty_button")
+Button/styles/hover = SubResource("StyleBoxEmpty_button")
+Button/styles/pressed = SubResource("StyleBoxEmpty_button")
+Button/styles/disabled = SubResource("StyleBoxEmpty_button")
+Button/styles/focus = SubResource("StyleBoxEmpty_button")
+Label/colors/font_color = Color(0.188, 0.212, 0.22, 1)

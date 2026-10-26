@@ -1,24 +1,66 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=13 format=3]
 
-[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_button"]
+[ext_resource type="Script" path="res://scenes/LevelSelectPage/level_marker.gd" id="1_marker"]
+[ext_resource type="Script" path="res://scenes/LevelSelectPage/circular_hit_button.gd" id="2_hit"]
+[ext_resource type="Theme" path="res://assets/ui/level_select/map_theme.tres" id="3_theme"]
+[ext_resource type="Texture2D" path="res://assets/ui/level_select/ring.svg" id="4_ring"]
+[ext_resource type="Texture2D" path="res://assets/ui/level_select/ring_selected.svg" id="5_selected"]
+[ext_resource type="Texture2D" path="res://assets/ui/level_select/center_dot.svg" id="6_dot"]
+[ext_resource type="Texture2D" path="res://assets/ui/level_select/lock.svg" id="7_lock"]
+[ext_resource type="Texture2D" path="res://assets/ui/level_select/orbit_dot.svg" id="8_orbit"]
+[ext_resource type="Texture2D" path="res://assets/ui/level_select/name_underline.svg" id="9_underline"]
+
+[sub_resource type="Animation" id="Animation_reset"]
+resource_name = "RESET"
+length = 0.001
+tracks/0/type = "value"
+tracks/0/path = NodePath("HitButton/Visual/OrbitPivot:rotation")
+tracks/0/interp = 1
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+
+[sub_resource type="Animation" id="Animation_orbit"]
+resource_name = "orbit"
+length = 3.0
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/path = NodePath("HitButton/Visual/OrbitPivot:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 3),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.0, 6.28318530717959]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_orbit"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"orbit": SubResource("Animation_orbit")
+}
 
 [node name="LevelMarker" type="Control"]
-custom_minimum_size = Vector2(96, 160)
+custom_minimum_size = Vector2(96, 176)
 layout_mode = 0
 offset_right = 96.0
-offset_bottom = 160.0
+offset_bottom = 176.0
 mouse_filter = 2
+theme = ExtResource("3_theme")
+script = ExtResource("1_marker")
+editor_description = "可复用关卡入口。位置在父章节中编辑；文字、锁定与完成状态由地图读取真实目录和进度。"
 
 [node name="HitButton" type="Button" parent="."]
 layout_mode = 0
 offset_right = 96.0
 offset_bottom = 96.0
 mouse_default_cursor_shape = 2
-theme_override_styles/normal = SubResource("StyleBoxEmpty_button")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_button")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_button")
-theme_override_styles/disabled = SubResource("StyleBoxEmpty_button")
 flat = true
+script = ExtResource("2_hit")
 
 [node name="Visual" type="Control" parent="HitButton"]
 layout_mode = 1
@@ -35,57 +77,90 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
 mouse_filter = 2
+texture = ExtResource("4_ring")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="SelectedRing" type="TextureRect" parent="HitButton/Visual"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("5_selected")
 expand_mode = 1
 stretch_mode = 5
 
 [node name="CenterDot" type="TextureRect" parent="HitButton/Visual"]
+visible = false
 layout_mode = 0
-offset_left = 40.0
-offset_top = 40.0
-offset_right = 56.0
-offset_bottom = 56.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 72.0
+offset_bottom = 72.0
 mouse_filter = 2
+texture = ExtResource("6_dot")
 expand_mode = 1
 stretch_mode = 5
 
 [node name="LockIcon" type="TextureRect" parent="HitButton/Visual"]
 visible = false
 layout_mode = 0
-offset_left = 36.0
-offset_top = 36.0
-offset_right = 60.0
-offset_bottom = 60.0
+offset_left = 32.0
+offset_top = 32.0
+offset_right = 64.0
+offset_bottom = 64.0
 mouse_filter = 2
+texture = ExtResource("7_lock")
 expand_mode = 1
 stretch_mode = 5
 
 [node name="OrbitPivot" type="Node2D" parent="HitButton/Visual"]
+visible = false
 position = Vector2(48, 48)
 
 [node name="OrbitDot" type="Sprite2D" parent="HitButton/Visual/OrbitPivot"]
-position = Vector2(40, 0)
+position = Vector2(39, 0)
+texture = ExtResource("8_orbit")
 
 [node name="NumberLabel" type="Label" parent="."]
 layout_mode = 0
-offset_top = 104.0
+offset_top = 82.0
 offset_right = 96.0
-offset_bottom = 128.0
+offset_bottom = 122.0
 mouse_filter = 2
+theme_override_font_sizes/font_size = 26
 text = "01"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="NameLabel" type="Label" parent="."]
+visible = false
 layout_mode = 0
-offset_top = 128.0
-offset_right = 96.0
-offset_bottom = 160.0
+offset_left = -96.0
+offset_top = 122.0
+offset_right = 192.0
+offset_bottom = 161.0
 mouse_filter = 2
+theme_override_font_sizes/font_size = 24
 text = "关卡名称"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="NameUnderline" type="TextureRect" parent="."]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 164.0
+offset_right = 88.0
+offset_bottom = 176.0
+mouse_filter = 2
+texture = ExtResource("9_underline")
+expand_mode = 1
+
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {
+&"": SubResource("AnimationLibrary_orbit")
+}
