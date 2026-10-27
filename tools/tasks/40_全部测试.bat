@@ -1,7 +1,7 @@
 @echo off
 rem 跑 tests 目录下所有 *.tscn，逐个汇总结果
 rem
-rem 判定规则：输出里必须出现 "TEST RESULT: PASS" 才算过。
+rem 判定规则：退出码为 0、出现 PASS、且没有脚本/引擎错误才算过。
 rem   —— 只靠退出码不够：脚本解析失败时场景照样会跑，进程会挂住或退出码为 0。
 rem --quit-after 是超时保险：测试脚本写错导致不 quit 时，最多跑 2 万帧就强制结束。
 chcp 65001 >nul
@@ -26,11 +26,17 @@ for %%T in ("%GODOT_PROJECT%\tests\*.tscn") do (
     echo.
     echo   === 测试 !REL! ===
     "%GODOT_CONSOLE_EXE%" --headless --quit-after 60000 --path "%GODOT_PROJECT%" "res://tests/!REL!" > "!TMPOUT!" 2>&1
+    set "TEST_EXIT=!ERRORLEVEL!"
     type "!TMPOUT!"
+    set "TEST_FAILED=0"
+    if not "!TEST_EXIT!"=="0" set "TEST_FAILED=1"
     findstr /c:"TEST RESULT: PASS" "!TMPOUT!" >nul
-    if errorlevel 1 (
+    if errorlevel 1 set "TEST_FAILED=1"
+    findstr /c:"SCRIPT ERROR:" /b /c:"ERROR:" "!TMPOUT!" >nul
+    if not errorlevel 1 set "TEST_FAILED=1"
+    if "!TEST_FAILED!"=="1" (
         set /a FAIL+=1
-        echo   [FAIL] !REL!  ^(没有输出 TEST RESULT: PASS^)
+        echo   [FAIL] !REL!  ^(退出码异常、缺少 PASS 或存在运行错误^)
     ) else (
         echo   [PASS] !REL!
     )

@@ -31,6 +31,9 @@ func on_ray(in_dir: Vector2, _normal: Vector2, hit_pos: Vector2, energy: float) 
 
 
 func _draw() -> void:
+	var art := get_node_or_null("Art") as Sprite2D
+	if art != null and art.texture != null:
+		return
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	var size := Vector2(24.0, 96.0)
 	if shape_node != null and shape_node.shape is RectangleShape2D:
@@ -38,23 +41,13 @@ func _draw() -> void:
 	var half := size / 2.0
 	var color := Color(0.55, 0.85, 0.95, 0.9)
 
-	# 凹透镜：左右表面向内侧凹陷（中间薄、上下厚）。
-	# 表面是一段大半径圆弧：由弦高公式反推圆心偏移与半径，弧线端点落在上下边。
-	var sagitta := half.x * 0.66
-	var center_offset := sagitta * 0.5 - (half.y * half.y) / (2.0 * sagitta)
-	var arc_radius := absf(center_offset - sagitta)
-	var arc_angle := atan2(half.y, absf(center_offset))
-	draw_arc(Vector2(-half.x + center_offset, 0.0), arc_radius,
-			-arc_angle, arc_angle, 18, color, 2.0)
-	draw_arc(Vector2(half.x - center_offset, 0.0), arc_radius,
-			PI - arc_angle, PI + arc_angle, 18, color, 2.0)
-	draw_line(Vector2(-half.x, -half.y), Vector2(half.x, -half.y), color, 2.0)
-	draw_line(Vector2(-half.x, half.y), Vector2(half.x, half.y), color, 2.0)
-
-	# 分束示意
-	var count := maxi(split_count, 2)
-	var step := fan_degrees / float(count - 1)
-	var start := -fan_degrees * 0.5
-	for index in count:
-		var dir := Vector2.RIGHT.rotated(deg_to_rad(start + step * float(index)))
-		draw_line(Vector2.ZERO, dir * (half.x + 42.0), Color(1.0, 0.85, 0.3, 0.55), 1.5)
+	# 贴图缺失时仍提供可读的编辑器占位轮廓。
+	var outline := PackedVector2Array([
+		Vector2(-half.x, -half.y), Vector2(half.x, -half.y),
+		Vector2(half.x * 0.58, -half.y * 0.66), Vector2(half.x * 0.34, 0.0),
+		Vector2(half.x * 0.58, half.y * 0.66), Vector2(half.x, half.y),
+		Vector2(-half.x, half.y), Vector2(-half.x * 0.58, half.y * 0.66),
+		Vector2(-half.x * 0.34, 0.0), Vector2(-half.x * 0.58, -half.y * 0.66),
+		Vector2(-half.x, -half.y),
+	])
+	draw_polyline(outline, color, 2.0, true)

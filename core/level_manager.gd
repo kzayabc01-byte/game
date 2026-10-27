@@ -1,9 +1,11 @@
 class_name LevelManager
 extends Node
 
-## 关卡管理器：连接蚕茧、处理胜利与重置、显示界面提示。
+## 关卡会话协调器：入口权限、阶段、胜利、重置。结算展示由 LevelResultView 负责。
 ## 用法：每个关卡场景放一个本节点（level_base 已放好），
 ## 正式关卡顺序由章节目录决定；旧 next_level_scene 仅保留文件兼容。
+
+signal completed(completed_level_name: String)
 
 enum PublicationState { DRAFT, PUBLISHED }
 enum LevelKind { FIXED, BUILD }
@@ -28,12 +30,10 @@ enum LevelKind { FIXED, BUILD }
 @export var main_menu_scene: PackedScene = preload("res://scenes/MainMenu/MainMenu.tscn")
 
 const LEVEL_SELECT_SCENE := "res://scenes/LevelSelectPage/LevelSelectMap.tscn"
+const WORKSHOP_SCENE := "res://scenes/LevelSelectPage/LevelSelectPage.tscn"
 
-@onready var _win_label: Label = $LevelHUD/WinLabel
-@onready var _hint_label: Label = $LevelHUD/HintLabel
-@onready var _coins_label: Label = $LevelHUD/CoinsLabel
-@onready var _upgrade_button: Button = $LevelHUD/UpgradeButton
-@onready var _light_system: LightSystem = $"../LightSystem"
+var _hud: LevelHudView
+var _light_system: LightSystem
 @onready var _pause_menu: CanvasLayer = $PauseMenu
 @onready var _resume_button: Button = $PauseMenu/Center/PanelContainer/Padding/Buttons/ResumeButton
 @onready var _restart_button: Button = $PauseMenu/Center/PanelContainer/Padding/Buttons/RestartButton
@@ -41,39 +41,56 @@ const LEVEL_SELECT_SCENE := "res://scenes/LevelSelectPage/LevelSelectMap.tscn"
 @onready var _home_button: Button = $PauseMenu/Center/PanelContainer/Padding/Buttons/HomeButton
 var _won: bool = false
 var _player_builder: PlayerBuilder = null
-var _result_layer: CanvasLayer = null
-var _result_screen: CenterContainer = null
-var _result_title: Label = null
-var _result_detail: Label = null
-var _result_actions: VBoxContainer = null
+var run_mode: LevelRunContext.Mode = LevelRunContext.Mode.PREVIEW
+var _level_root: Node
+var _result_view: LevelResultView
 
 
 func _ready() -> void:
-	_win_label.hide()
+	_level_root = owner
+	_light_system = _level_root.get_node("LightSystem") as LightSystem
+	if run_mode == LevelRunContext.Mode.AUTHORING:
+		for child in get_children():
+			if child is CanvasLayer:
+				(child as CanvasLayer).hide()
+		set_process_input(false)
+		set_process_unhandled_input(false)
+		process_mode = Node.PROCESS_MODE_DISABLED
+		return
+	run_mode = LevelRunContext.take(_level_root.scene_file_path)
+	_hud = LevelHudView.new()
+	_hud.configure(get_node("LevelHUD") as CanvasLayer, _can_record_progress())
+	_hud.upgrade_requested.connect(_on_upgrade_pressed)
 	_pause_menu.hide()
 	_pause_menu.process_mode = Node.PROCESS_MODE_ALWAYS
 	_resume_button.pressed.connect(_on_resume_pressed)
 	_restart_button.pressed.connect(_on_restart_pressed)
 	_select_button.pressed.connect(_on_select_pressed)
 	_home_button.pressed.connect(_on_home_pressed)
-	_upgrade_button.pressed.connect(_on_upgrade_pressed)
-	_coins_label.visible = publication_state == PublicationState.PUBLISHED
-	_upgrade_button.visible = publication_state == PublicationState.PUBLISHED
-	_build_result_screen()
+	_result_view = LevelResultView.new()
+	_result_view.name = "LevelResult"
+	add_child(_result_view)
+	_result_view.next_requested.connect(_on_result_next)
+	_result_view.retry_requested.connect(_on_restart_pressed)
+	_result_view.return_requested.connect(_on_select_pressed)
+	if run_mode == LevelRunContext.Mode.PREVIEW:
+		_select_button.text = "返回工坊"
 	_refresh_progress_ui()
 	if level_kind == LevelKind.BUILD:
 		_player_builder = PlayerBuilder.new()
 		_player_builder.name = "PlayerBuilder"
 		add_child(_player_builder)
-		_player_builder.configure(self)
+		_player_builder.configure(self, _level_root as Node2D)
 	# 延后到所有节点 ready 之后再连接蚕茧，避免错过任何蚕茧
 	call_deferred("_connect_cocoons")
 
 
 func _connect_cocoons() -> void:
-	for node in get_tree().get_nodes_in_group(Cocoon.COCOON_GROUP):
+	if run_mode == LevelRunContext.Mode.AUTHORING:
+		return
+	for node in _level_root.find_children("*", "", true, false):
 		var cocoon := node as Cocoon
-		if cocoon != null:
+		if cocoon != null and not cocoon.activated.is_connected(_on_cocoon_activated):
 			cocoon.activated.connect(_on_cocoon_activated)
 
 
@@ -124,36 +141,44 @@ func _on_resume_pressed() -> void:
 
 
 func _on_restart_pressed() -> void:
+	if SceneTransition.is_transitioning():
+		return
+	LevelRunContext.prepare(_level_root.scene_file_path, run_mode)
 	SceneTransition.restart_current_scene()
 
 
 func _on_select_pressed() -> void:
-	SceneTransition.change_to_file(LEVEL_SELECT_SCENE)
+	if SceneTransition.is_transitioning():
+		return
+	LevelRunContext.clear()
+	SceneTransition.change_to_file(
+		WORKSHOP_SCENE if run_mode == LevelRunContext.Mode.PREVIEW else LEVEL_SELECT_SCENE)
 
 
 func _on_home_pressed() -> void:
+	LevelRunContext.clear()
 	SceneTransition.change_to_packed(main_menu_scene)
 
 
 ## 重置整个关卡：光源回到初始角度，机关回到初始状态
 func reset_level() -> void:
 	_won = false
-	_win_label.hide()
-	if _result_screen != null:
-		_result_screen.hide()
-		_result_layer.hide()
+	if _hud != null:
+		_hud.reset()
+	if is_instance_valid(_result_view):
+		_result_view.hide()
 	_light_system.reset_state()
-	get_tree().call_group("resettables", "reset_state")
+	for node in _level_root.find_children("*", "", true, false):
+		if node.is_in_group("resettables") and node.has_method("reset_state"):
+			node.call("reset_state")
 	GameEvents.game_reset.emit()
 
 
 func _on_cocoon_activated() -> void:
-	if _won:
+	if _won or run_mode == LevelRunContext.Mode.AUTHORING:
 		return
 	_won = true
-	var scene := get_tree().current_scene
-	var current_path := scene.scene_file_path if scene != null else ""
-	var official := ChapterCatalog.is_official_path(level_id, current_path)
+	var official: bool = _can_record_progress()
 	var next_level := ChapterCatalog.next_official(level_id) if official else {}
 	var newly_unlocked_chapter := false
 	if not next_level.is_empty() and next_level["chapter"] != chapter:
@@ -162,90 +187,36 @@ func _on_cocoon_activated() -> void:
 	if official:
 		saved = ProgressStore.record_official_clear(level_id)
 		_refresh_progress_ui()
-	GameEvents.level_completed.emit(level_name)
-	_result_title.text = "%s 完成！" % level_name
-	_result_detail.text = "获得 50 金币" if official and saved else "关卡完成"
+	if official:
+		GameEvents.level_completed.emit(level_name)
+	completed.emit(level_name)
+	var detail: String = "获得 50 金币" if official and saved else "预览完成 · 不记录正式进度和金币"
 	if official and not saved:
-		_result_detail.text = "存档失败：进度和金币未保存"
+		detail = "存档失败：进度和金币未保存"
 	elif newly_unlocked_chapter and saved:
-		_result_detail.text += " · 已解锁第 %d 章" % next_level["chapter"]
-	for child in _result_actions.get_children():
-		child.queue_free()
-	if official and not next_level.is_empty() and saved:
-		var next_title := "下一关"
-		if next_level["chapter"] != chapter:
-			next_title = "进入第 %d 章" % next_level["chapter"]
-		_result_actions.add_child(_make_result_button(
-				next_title, _on_result_next.bind(next_level["path"])))
-	else:
-		_result_actions.add_child(_make_result_button(
-				"返回章节" if official else "返回关卡目录", _on_select_pressed))
-	_result_actions.add_child(_make_result_button("重玩", _on_restart_pressed))
-	if official and not next_level.is_empty() and saved:
-		_result_actions.add_child(_make_result_button(
-				"返回章节", _on_select_pressed))
-	_result_screen.show()
-	_result_layer.show()
+		detail += " · 已解锁第 %d 章" % next_level["chapter"]
+	if not saved or (not next_level.is_empty() and not ChapterCatalog.is_unlocked(next_level["level_id"])):
+		next_level = {}
+	_result_view.show_result("%s 完成！" % level_name, detail, next_level,
+		"返回章节" if official else "返回工坊", chapter)
 
 
-func _build_result_screen() -> void:
-	_result_layer = CanvasLayer.new()
-	_result_layer.layer = 30
-	_result_layer.hide()
-	add_child(_result_layer)
-	var dim := ColorRect.new()
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.02, 0.03, 0.05, 0.68)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	_result_layer.add_child(dim)
-	_result_screen = CenterContainer.new()
-	_result_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_result_screen.mouse_filter = Control.MOUSE_FILTER_STOP
-	_result_screen.hide()
-	_result_layer.add_child(_result_screen)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(440.0, 250.0)
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.09, 0.12, 0.17)
-	panel_style.border_color = Color(0.88, 0.70, 0.27)
-	panel_style.set_border_width_all(2)
-	panel.add_theme_stylebox_override("panel", panel_style)
-	_result_screen.add_child(panel)
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 28)
-	margin.add_theme_constant_override("margin_right", 28)
-	margin.add_theme_constant_override("margin_top", 24)
-	margin.add_theme_constant_override("margin_bottom", 24)
-	panel.add_child(margin)
-	var layout := VBoxContainer.new()
-	layout.add_theme_constant_override("separation", 12)
-	margin.add_child(layout)
-	_result_title = Label.new()
-	_result_title.add_theme_font_size_override("font_size", 28)
-	_result_title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	layout.add_child(_result_title)
-	_result_detail = Label.new()
-	_result_detail.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
-	layout.add_child(_result_detail)
-	_result_actions = VBoxContainer.new()
-	_result_actions.add_theme_constant_override("separation", 8)
-	layout.add_child(_result_actions)
-
-
-func _make_result_button(title: String, callback: Callable) -> Button:
-	var button := Button.new()
-	button.text = title
-	button.custom_minimum_size = Vector2(360.0, 42.0)
-	button.pressed.connect(callback)
-	return button
+func _can_record_progress() -> bool:
+	return (
+		is_instance_valid(_level_root)
+		and LevelRunContext.can_record(run_mode, level_id, _level_root.scene_file_path)
+	)
 
 
 func _on_result_next(path: String) -> void:
+	if SceneTransition.is_transitioning() or not FileAccess.file_exists(path):
+		return
+	LevelRunContext.prepare(path, LevelRunContext.Mode.OFFICIAL)
 	SceneTransition.change_to_file(path)
 
 
 func _on_upgrade_pressed() -> void:
-	if publication_state != PublicationState.PUBLISHED:
+	if not _can_record_progress():
 		return
 	if ProgressStore.buy_hint_upgrade():
 		_light_system.refresh_hint_length()
@@ -253,11 +224,8 @@ func _on_upgrade_pressed() -> void:
 
 
 func _refresh_progress_ui() -> void:
-	if _coins_label == null or _upgrade_button == null:
+	if _hud == null:
 		return
-	_coins_label.text = "金币 %d  ·  虚线 %d" % [
-		ProgressStore.get_coins(), roundi(ProgressStore.get_hint_length())
-	]
-	var full := ProgressStore.get_hint_level() >= ProgressStore.MAX_HINT_LEVEL
-	_upgrade_button.disabled = full or ProgressStore.get_coins() < ProgressStore.UPGRADE_COST
-	_upgrade_button.text = "瞄准提示已满级" if full else "升级虚线 +120  ·  100 金币"
+	_hud.show_progress(ProgressStore.get_coins(), ProgressStore.get_hint_length(),
+		ProgressStore.get_hint_level() >= ProgressStore.MAX_HINT_LEVEL,
+		ProgressStore.UPGRADE_COST, ProgressStore.HINT_LENGTH_STEP)

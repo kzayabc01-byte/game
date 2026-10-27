@@ -4,6 +4,7 @@ extends Node
 ## 跑法：tools\dev.bat 40
 
 var _failed := 0
+var _fixtures: Array[Node] = []
 
 
 func _ready() -> void:
@@ -15,6 +16,10 @@ func _ready() -> void:
 		print("TEST RESULT: PASS")
 	else:
 		print("TEST RESULT: FAIL（%d 项不通过）" % _failed)
+	for fixture in _fixtures:
+		if is_instance_valid(fixture):
+			fixture.free()
+	_fixtures.clear()
 	get_tree().quit(0 if _failed == 0 else 1)
 
 
@@ -22,6 +27,7 @@ func _test_three_rays() -> void:
 	print("")
 	print("--- 三分束 ---")
 	var lens := ConcaveLens.new()
+	_fixtures.append(lens)
 	lens.split_count = 3
 	lens.fan_degrees = 30.0
 	lens.energy_falloff = 0.6
@@ -45,6 +51,7 @@ func _test_two_rays() -> void:
 	print("")
 	print("--- 两分束 ---")
 	var lens := ConcaveLens.new()
+	_fixtures.append(lens)
 	lens.split_count = 2
 	lens.fan_degrees = 40.0
 	var out := lens.on_ray(Vector2.RIGHT, Vector2.LEFT, Vector2.ZERO, 1.0)
@@ -61,6 +68,7 @@ func _test_energy_floor() -> void:
 	print("")
 	print("--- 能量地板 ---")
 	var lens := ConcaveLens.new()
+	_fixtures.append(lens)
 	lens.split_count = 3
 	lens.energy_falloff = 0.6
 	# 能量 0.2 × 0.6 = 0.12 < MIN_ENERGY(0.15) → 不应产生光线

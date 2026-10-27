@@ -23,10 +23,15 @@ config/icon="res://icon.svg"
 
 GameEvents="*res://core/game_events.gd"
 SceneTransition="*res://scenes/SceneTransition.tscn"
+MCPRuntime="*res://addons/godot_mcp/runtime/mcp_runtime.gd"
 
 [display]
 
 window/stretch/mode="canvas_items"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
 
 [input]
 

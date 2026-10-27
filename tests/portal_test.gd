@@ -5,6 +5,7 @@ extends Node
 ## 跑法：tools\dev.bat 40
 
 var _failed := 0
+var _fixtures: Array[Node] = []
 
 
 func _ready() -> void:
@@ -21,14 +22,20 @@ func _ready() -> void:
 		print("TEST RESULT: PASS")
 	else:
 		print("TEST RESULT: FAIL（%d 项不通过）" % _failed)
+	for fixture in _fixtures:
+		if is_instance_valid(fixture):
+			fixture.free()
+	_fixtures.clear()
 	get_tree().quit(0 if _failed == 0 else 1)
 
 
 func _make_pair(entry_rotation: float, exit_rotation: float, exit_pos := Vector2(300.0, 0.0)) -> Array[Portal]:
 	var entry := Portal.new()
+	_fixtures.append(entry)
 	entry.position = Vector2.ZERO
 	entry.rotation = entry_rotation
 	var exit := Portal.new()
+	_fixtures.append(exit)
 	exit.position = exit_pos
 	exit.rotation = exit_rotation
 	entry.linked_portal = exit
@@ -134,6 +141,7 @@ func _test_unlinked() -> void:
 	print("")
 	print("--- 未配对的坏门 ---")
 	var lonely := Portal.new()
+	_fixtures.append(lonely)
 	lonely.position = Vector2.ZERO
 	var out := lonely.on_ray(Vector2.RIGHT, Vector2.LEFT, Vector2.ZERO, 1.0)
 	_check("未配对时吞掉光线", out.is_empty(), "实际 %d 条" % out.size())
@@ -143,12 +151,15 @@ func _test_pair_id() -> void:
 	print("")
 	print("--- pair_id 配对（多对门同场不乱配）---")
 	var a := Portal.new()
+	_fixtures.append(a)
 	a.position = Vector2(0.0, 0.0)
 	a.pair_id = &"red"
 	var b := Portal.new()
+	_fixtures.append(b)
 	b.position = Vector2(500.0, 0.0)
 	b.pair_id = &"red"
 	var c := Portal.new()
+	_fixtures.append(c)
 	c.position = Vector2(60.0, 0.0)   # 离 A 更近，但 pair_id 不同
 	c.pair_id = &"blue"
 	add_child(a)
@@ -172,8 +183,10 @@ func _test_auto_link() -> void:
 	print("--- 配对与距离无关 ---")
 	# 1) 两扇门挨得很近，但没有编号：不应该被自动配对
 	var near_a := Portal.new()
+	_fixtures.append(near_a)
 	near_a.position = Vector2(0.0, 0.0)
 	var near_b := Portal.new()
+	_fixtures.append(near_b)
 	near_b.position = Vector2(40.0, 0.0)
 	add_child(near_a)
 	add_child(near_b)
@@ -187,9 +200,11 @@ func _test_auto_link() -> void:
 
 	# 2) 编号相同、相距几千像素：仍然配对
 	var far_a := Portal.new()
+	_fixtures.append(far_a)
 	far_a.position = Vector2(0.0, 0.0)
 	far_a.pair_id = &"far"
 	var far_b := Portal.new()
+	_fixtures.append(far_b)
 	far_b.position = Vector2(2400.0, 1800.0)
 	far_b.pair_id = &"far"
 	add_child(far_a)
@@ -201,6 +216,7 @@ func _test_auto_link() -> void:
 
 	# 3) 离得再远也不改关系：同编号 + 另一个未编号的近门，仍配原来那扇
 	var near_c := Portal.new()
+	_fixtures.append(near_c)
 	near_c.position = far_a.position + Vector2(30.0, 0.0)
 	add_child(near_c)
 	await get_tree().process_frame

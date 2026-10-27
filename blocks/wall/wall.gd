@@ -8,11 +8,10 @@ extends StaticBody2D
 
 
 func _draw() -> void:
-	# 占位外观：深色墙体 + 描边
+	# 材质填充由 Visual 子节点负责；这里只保留清晰的碰撞轮廓。
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	if shape_node == null or not shape_node.shape is RectangleShape2D:
 		return
 	var size: Vector2 = (shape_node.shape as RectangleShape2D).size
 	var half := size / 2.0
-	draw_rect(Rect2(-half, size), Color(0.16, 0.18, 0.22))
 	draw_rect(Rect2(-half, size), Color(0.45, 0.5, 0.6), false, 2.0)

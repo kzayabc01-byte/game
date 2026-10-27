@@ -1,0 +1,33 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/levels/level_base.tscn" id="1_base"]
+[ext_resource type="PackedScene" path="res://blocks/trigger_switch/trigger_switch.tscn" id="2_trigger_switch"]
+[ext_resource type="PackedScene" path="res://blocks/wall/wall.tscn" id="3_wall"]
+[ext_resource type="PackedScene" path="res://blocks/mirror/mirror.tscn" id="4_mirror"]
+[ext_resource type="PackedScene" path="res://blocks/light_source/light_source.tscn" id="5_light_source"]
+[ext_resource type="PackedScene" path="res://blocks/cocoon/cocoon.tscn" id="6_cocoon"]
+
+[node name="Level09" instance=ExtResource("1_base")]
+
+[node name="LevelManager" parent="." index="3"]
+level_id = "6f4d3615-8ab9-4e2b-8d52-6321d7dc98fc"
+level_kind = 1
+build_bounds = Rect2(48, 96, 1056, 504)
+build_wire_limit = 2
+[node name="TriggerSwitch" parent="Blocks" instance=ExtResource("2_trigger_switch")]
+position = Vector2(480, 160)
+[node name="TriggerSwitch2" parent="Blocks" instance=ExtResource("2_trigger_switch")]
+position = Vector2(608, 160)
+[node name="Wall" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(564.787659, 56.669254)
+scale = Vector2(0.98, 1.86)
+[node name="Mirror" parent="Blocks" instance=ExtResource("4_mirror")]
+position = Vector2(570.23999, 458.559998)
+scale = Vector2(5.82, 1.88)
+[node name="LightSource" parent="Blocks" instance=ExtResource("5_light_source")]
+position = Vector2(96, 32)
+[node name="Cocoon" parent="Blocks" instance=ExtResource("6_cocoon")]
+position = Vector2(960, 64)
+[node name="Wall2" parent="Blocks" instance=ExtResource("3_wall")]
+position = Vector2(561.599976, 294.399994)
+scale = Vector2(6.15, 1.2)

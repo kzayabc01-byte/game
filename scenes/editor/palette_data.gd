@@ -1,7 +1,7 @@
 class_name PaletteData
 extends RefCounted
 
-## 积木面板静态目录：编辑器从这里的 12 个条目生成面板（中文标签、分类、场景路径）
+## 积木面板静态目录：编辑器从这里生成面板（中文标签、分类、场景路径）
 ## 和 Inspector 的属性迷你面板（props 描述每个导出属性怎么编辑）。
 ## preset 是可选的生成预设：调色板点生成时应用（变色片是折射面的预设）。
 
@@ -124,12 +124,27 @@ static var _entries: Array[Dictionary] = [
 	},
 	# ---------- 地形 ----------
 	{
-		"key": "wall", "label": "墙体", "category": CATEGORY_TERRAIN,
+		"key": "wall", "label": "机关墙体", "category": CATEGORY_TERRAIN,
 		"path": "res://blocks/wall/wall.tscn", "size": Vector2(64, 64), "props": [],
+	},
+	{
+		"key": "opaque_wall", "label": "固定遮光墙", "category": CATEGORY_TERRAIN,
+		"path": "res://blocks/opaque_wall/opaque_wall.tscn", "size": Vector2(64, 64),
+		"wire_target": false, "props": [],
 	},
 	{
 		"key": "stone_block", "label": "石块", "category": CATEGORY_TERRAIN,
 		"path": "res://blocks/stone_block/stone_block.tscn", "size": Vector2(64, 64), "props": [],
+	},
+	{
+		"key": "dark_slope_short", "label": "短石斜坡", "category": CATEGORY_TERRAIN,
+		"path": "res://blocks/dark_slope/dark_slope_short.tscn", "size": Vector2(144, 64),
+		"wire_target": false, "props": [],
+	},
+	{
+		"key": "dark_slope_long", "label": "长石斜坡", "category": CATEGORY_TERRAIN,
+		"path": "res://blocks/dark_slope/dark_slope_long.tscn", "size": Vector2(224, 80),
+		"wire_target": false, "props": [],
 	},
 ]
 

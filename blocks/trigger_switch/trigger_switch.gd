@@ -11,6 +11,23 @@ extends LightReceiver
 signal active_changed(active: bool)
 
 @export var latch: bool = false
+@export_category("视觉 / Visual")
+@export_color_no_alpha var inactive_color: Color = MechanismPalette.ORANGE_GLOW:
+	set(value):
+		inactive_color = value
+		queue_redraw()
+@export_color_no_alpha var active_color: Color = MechanismPalette.CYAN_GLOW:
+	set(value):
+		active_color = value
+		queue_redraw()
+@export_range(0.0, 1.0, 0.01) var color_concentration: float = 0.88:
+	set(value):
+		color_concentration = value
+		queue_redraw()
+@export_range(0.0, 2.0, 0.01) var glow_strength: float = 0.72:
+	set(value):
+		glow_strength = value
+		queue_redraw()
 
 var _latched: bool = false
 var _active: bool = false
@@ -60,13 +77,18 @@ func _on_lit_changed(_value: bool) -> void:
 
 
 func _draw() -> void:
-	# 占位外观：感光板，激活时亮起命中颜色
-	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
+	var shape_node := get_node_or_null("SensorShape") as CollisionShape2D
 	var size := Vector2(40, 40)
 	if shape_node != null and shape_node.shape is RectangleShape2D:
 		size = (shape_node.shape as RectangleShape2D).size
-	var half := size / 2.0
-	var glow := get_light_color() if _active else Color(0.32, 0.35, 0.42)
-	draw_rect(Rect2(-half, size), Color(0.12, 0.13, 0.17))
-	draw_rect(Rect2(-half, size), Color(glow, 0.8), false, 3.0)
-	draw_circle(Vector2.ZERO, minf(half.x, half.y) * 0.35, glow if _active else Color(0.25, 0.28, 0.34))
+	var radius := minf(size.x, size.y) * 0.5
+	var state_color := active_color if _active else inactive_color
+	var accent := MechanismPalette.concentrate(
+		MechanismPalette.MUTED_SURFACE, state_color, color_concentration)
+	if _active and is_lit():
+		accent = accent.lerp(get_light_color(), 0.16)
+	draw_circle(Vector2.ZERO, radius, MechanismPalette.DARK_SURFACE)
+	draw_arc(Vector2.ZERO, radius - 1.5, 0.0, TAU, 40, Color(accent, 0.3 + glow_strength * 0.28), 5.0)
+	draw_arc(Vector2.ZERO, radius - 4.0, 0.0, TAU, 40, accent, 2.0)
+	draw_circle(Vector2.ZERO, radius * 0.43, accent.darkened(0.08))
+	draw_circle(Vector2(-radius * 0.13, -radius * 0.13), radius * 0.12, Color(MechanismPalette.LIGHT_EDGE, 0.72))

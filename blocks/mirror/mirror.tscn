@@ -1,12 +1,8 @@
-[gd_scene load_steps=6 format=3 uid="uid://dvpqvneon1uhf"]
+[gd_scene load_steps=5 format=3 uid="uid://dvpqvneon1uhf"]
 
 [ext_resource type="Script" uid="uid://c1a0og3n3m5ed" path="res://blocks/mirror/mirror.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://assets/sprites/optics/optics_reference.png" id="2_art"]
-[ext_resource type="Script" path="res://blocks/optical_art_sprite.gd" id="3_fit"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_mirror"]
-atlas = ExtResource("2_art")
-region = Rect2(1855, 104, 156, 516)
+[ext_resource type="Texture2D" uid="uid://c0826oi1enmly" path="res://assets/mechanisms/props/mirror_panel_clean.png" id="2_am78u"]
+[ext_resource type="Script" uid="uid://dsw7ebpalwxjo" path="res://blocks/optical_art_sprite.gd" id="3_fit"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mirror"]
 resource_local_to_scene = true
@@ -21,10 +17,11 @@ script = ExtResource("1_script")
 shape = SubResource("RectangleShape2D_mirror")
 
 [node name="Art" type="Sprite2D" parent="."]
-rotation = 1.5707964
-scale = Vector2(0.046153847, 0.14263566)
-texture = SubResource("AtlasTexture_mirror")
-script = ExtResource("3_fit")
-size_multiplier = Vector2(1.15, 0.9)
-rotate_texture_quarter_turn = true
 editor_description = "原图最右平面镜，旋转为横向并略加长、收窄。碰撞仍为64×8；Size Multiplier只调整美术。"
+z_index = -1
+rotation = 1.5708
+scale = Vector2(0.0461538, 0.142636)
+texture = ExtResource("2_am78u")
+script = ExtResource("3_fit")
+size_multiplier = Vector2(1.15, 2.2)
+rotate_texture_quarter_turn = true

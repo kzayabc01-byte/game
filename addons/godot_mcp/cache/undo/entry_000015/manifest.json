@@ -1,0 +1,18 @@
+{
+  "args_summary": "batch_execute",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000015/files/blocks/dark_slope/dark_slope_short.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/dark_slope/dark_slope_short.tscn"
+    },
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000015/files/blocks/dark_slope/dark_slope_long.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/dark_slope/dark_slope_long.tscn"
+    }
+  ],
+  "id": "000015",
+  "timestamp": 1793089669.0,
+  "tool": "batch_execute"
+}

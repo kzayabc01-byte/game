@@ -172,6 +172,7 @@ func _on_marker_activated(path: String) -> void:
 		return
 	for record in _levels:
 		if record["path"] == path and ChapterCatalog.is_unlocked(record["level_id"]):
+			LevelRunContext.prepare(path, LevelRunContext.Mode.OFFICIAL)
 			SceneTransition.change_to_file(path)
 			return
 

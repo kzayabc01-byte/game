@@ -1,0 +1,105 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="PackedScene" path="res://blocks/wall/wall.tscn" id="1_wall"]
+[ext_resource type="PackedScene" path="res://blocks/stone_block/stone_block.tscn" id="2_stone"]
+[ext_resource type="PackedScene" path="res://blocks/convex_lens/convex_lens.tscn" id="3_convex"]
+[ext_resource type="PackedScene" path="res://blocks/concave_lens/concave_lens.tscn" id="4_concave"]
+[ext_resource type="PackedScene" path="res://blocks/glacier/glacier.tscn" id="5_glacier"]
+[ext_resource type="PackedScene" path="res://blocks/refract_surface/refract_surface.tscn" id="6_refract"]
+
+[node name="MechanismMaterialPreview" type="Node2D"]
+
+[node name="Background" type="ColorRect" parent="."]
+z_index = -10
+offset_right = 960.0
+offset_bottom = 360.0
+mouse_filter = 2
+color = Color(0.055, 0.065, 0.085, 1)
+
+[node name="Title" type="Label" parent="."]
+offset_left = 28.0
+offset_top = 22.0
+offset_right = 640.0
+offset_bottom = 56.0
+theme_override_colors/font_color = Color(0.84, 0.9, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "Mechanism material system — clean shape + adjustable surface"
+
+[node name="WallLabel" type="Label" parent="."]
+offset_left = 54.0
+offset_top = 276.0
+offset_right = 138.0
+offset_bottom = 302.0
+text = "Wall"
+horizontal_alignment = 1
+
+[node name="Wall" parent="." instance=ExtResource("1_wall")]
+position = Vector2(96, 174)
+scale = Vector2(1.8, 1.8)
+
+[node name="StoneLabel" type="Label" parent="."]
+offset_left = 190.0
+offset_top = 276.0
+offset_right = 274.0
+offset_bottom = 302.0
+text = "Stone"
+horizontal_alignment = 1
+
+[node name="Stone" parent="." instance=ExtResource("2_stone")]
+position = Vector2(232, 174)
+scale = Vector2(1.35, 1.35)
+gravity_enabled = false
+
+[node name="ConvexLabel" type="Label" parent="."]
+offset_left = 320.0
+offset_top = 276.0
+offset_right = 404.0
+offset_bottom = 302.0
+text = "Convex"
+horizontal_alignment = 1
+
+[node name="Convex" parent="." instance=ExtResource("3_convex")]
+position = Vector2(362, 174)
+
+[node name="ConcaveLabel" type="Label" parent="."]
+offset_left = 430.0
+offset_top = 276.0
+offset_right = 524.0
+offset_bottom = 302.0
+text = "Concave"
+horizontal_alignment = 1
+
+[node name="Concave" parent="." instance=ExtResource("4_concave")]
+position = Vector2(477, 174)
+
+[node name="GlacierLabel" type="Label" parent="."]
+offset_left = 552.0
+offset_top = 276.0
+offset_right = 646.0
+offset_bottom = 302.0
+text = "Glacier"
+horizontal_alignment = 1
+
+[node name="Glacier" parent="." instance=ExtResource("5_glacier")]
+position = Vector2(599, 174)
+scale = Vector2(1.35, 1.35)
+
+[node name="RefractLabel" type="Label" parent="."]
+offset_left = 678.0
+offset_top = 276.0
+offset_right = 824.0
+offset_bottom = 302.0
+text = "Refract surface"
+horizontal_alignment = 1
+
+[node name="Refract" parent="." instance=ExtResource("6_refract")]
+position = Vector2(751, 174)
+rotation = -0.28
+
+[node name="Hint" type="Label" parent="."]
+offset_left = 28.0
+offset_top = 318.0
+offset_right = 920.0
+offset_bottom = 344.0
+theme_override_colors/font_color = Color(0.54, 0.62, 0.72, 1)
+text = "Select each Visual child to tune tint, concentration, saturation, brightness, contrast, opacity and glow."

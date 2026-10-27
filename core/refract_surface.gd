@@ -79,14 +79,13 @@ func _bend(in_dir: Vector2, normal: Vector2) -> Vector2:
 
 
 func _draw() -> void:
-	# 占位外观：玻璃薄片 + 偏折方向示意（编辑器里一眼看出偏折方向）
+	# 材质填充由 Visual 子节点负责；这里保留边线和偏折方向示意。
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	var size := Vector2(96.0, 8.0)
 	if shape_node != null and shape_node.shape is RectangleShape2D:
 		size = (shape_node.shape as RectangleShape2D).size
 	var half := size / 2.0
 
-	draw_rect(Rect2(-half, size), Color(0.45, 0.75, 0.9, 0.35))
 	draw_rect(Rect2(-half, size), Color(0.70, 0.90, 1.00, 0.9), false, 2.0)
 
 	# 法线小标记

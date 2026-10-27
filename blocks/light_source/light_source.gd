@@ -21,6 +21,19 @@ const ANGLE_LABEL_OFFSET := Vector2(0.0, -36.0)
 @export var fine_step_degrees: float = 1.0
 @export var light_color: Color = Color(1.0, 0.85, 0.3)  # 初始光线颜色（触发机关可选颜色过滤）
 @export var follow_mouse: bool = false
+@export_category("视觉 / Visual")
+@export_color_no_alpha var accent_color: Color = MechanismPalette.CYAN_GLOW:
+	set(value):
+		accent_color = value
+		queue_redraw()
+@export_range(0.0, 1.0, 0.01) var color_concentration: float = 0.82:
+	set(value):
+		color_concentration = value
+		queue_redraw()
+@export_range(0.0, 2.0, 0.01) var glow_strength: float = 0.75:
+	set(value):
+		glow_strength = value
+		queue_redraw()
 
 var _initial_rotation: float = 0.0
 var _aim_offset_degrees := 0.0
@@ -120,10 +133,12 @@ func _aim_at(target: Vector2) -> void:
 
 
 func _draw() -> void:
-	# 占位外观：底座圆环 + 发光核心 + 方向箭头
-	draw_circle(Vector2.ZERO, BASE_RADIUS, Color(0.13, 0.14, 0.18))
-	draw_arc(Vector2.ZERO, BASE_RADIUS, 0.0, TAU, 24, Color(0.4, 0.42, 0.5), 2.0)
-	draw_circle(Vector2.ZERO, BASE_RADIUS * 0.4, light_color)
+	var accent := MechanismPalette.concentrate(
+		MechanismPalette.MUTED_SURFACE, accent_color, color_concentration)
+	draw_circle(Vector2.ZERO, BASE_RADIUS, MechanismPalette.DARK_SURFACE)
+	draw_arc(Vector2.ZERO, BASE_RADIUS, 0.0, TAU, 32, Color(accent, 0.34 + glow_strength * 0.26), 5.0)
+	draw_arc(Vector2.ZERO, BASE_RADIUS - 3.0, 0.0, TAU, 32, accent, 2.0)
+	draw_circle(Vector2.ZERO, BASE_RADIUS * 0.43, light_color)
 	draw_line(Vector2.ZERO, Vector2.RIGHT * (BASE_RADIUS + 12.0), light_color, 4.0)
 	var font := ThemeDB.fallback_font
 	if font == null:

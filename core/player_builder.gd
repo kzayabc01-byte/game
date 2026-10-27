@@ -3,7 +3,6 @@ extends CanvasLayer
 
 ## Player-facing construction controls for a limited-build level.
 
-const ACTION_LINK_SCENE := preload("res://blocks/action_link/action_link.tscn")
 const MIN_VIEW_ZOOM := 0.5
 const MAX_VIEW_ZOOM := 2.5
 const VIEW_ZOOM_STEP := 1.15
@@ -35,6 +34,11 @@ var _inventory_box: VBoxContainer
 var _status_label: Label
 var _recycle_button: Button
 var _wire_panel: PanelContainer
+var _source_controls: VBoxContainer
+var _connect_button: Button
+var _source_hint: Label
+var _wire_overlay: WireLayer
+var _configuration_errors: PackedStringArray = []
 var _wire_controls: VBoxContainer
 var _test_button: Button
 var _ghost: Polygon2D
@@ -43,9 +47,9 @@ var _wire_preview: Line2D
 var _gizmo: SelectionGizmo
 
 
-func configure(manager: LevelManager) -> void:
+func configure(manager: LevelManager, level_root: Node2D) -> void:
 	_manager = manager
-	_level_root = manager.get_parent() as Node2D
+	_level_root = level_root
 	_blocks = _level_root.get_node("Blocks") as Node2D
 	_camera = _level_root.get_node("Camera2D") as Camera2D
 	_camera_initial_position = _camera.position
@@ -65,7 +69,13 @@ func configure(manager: LevelManager) -> void:
 		elif child is LightSource:
 			(child as LightSource).follow_mouse = manager.build_aimable_sources.has(
 				str(_blocks.get_path_to(child)))
+	_configuration_errors = LevelValidator.validate_build(manager, _blocks)
 	_build_ui()
+	_wire_overlay = WireLayer.new()
+	_wire_overlay.name = "PlayerWirePorts"
+	_wire_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	_blocks.add_child(_wire_overlay)
+	_wire_overlay.top_level = true
 	_ghost = Polygon2D.new()
 	_ghost.color = Color(0.35, 0.85, 1.0, 0.24)
 	_ghost.visible = false
@@ -95,6 +105,8 @@ func configure(manager: LevelManager) -> void:
 
 
 func _exit_tree() -> void:
+	if is_instance_valid(_wire_overlay):
+		_wire_overlay.free()
 	if is_instance_valid(_ghost):
 		_ghost.free()
 	if is_instance_valid(_bounds_outline):
@@ -138,10 +150,11 @@ func _process(_delta: float) -> void:
 		var target := link.get_target()
 		if line != null and source != null and target != null:
 			line.points = PackedVector2Array([source.position, target.position])
+	_sync_action_destination_hint()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _testing:
+	if _testing or get_tree().paused or SceneTransition.is_transitioning():
 		return
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo:
@@ -151,7 +164,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 			KEY_Q, KEY_E:
-				if not key.ctrl_pressed and not key.alt_pressed and _can_drag_selection():
+				if (not key.ctrl_pressed and not key.alt_pressed and _can_drag_selection()
+					and get_viewport().gui_get_focus_owner() == null):
 					var direction := -1.0 if key.keycode == KEY_Q else 1.0
 					_rotate_selected(direction * (1.0 if key.shift_pressed else 15.0))
 					get_viewport().set_input_as_handled()
@@ -179,7 +193,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if motion != null and _gizmo.is_dragging():
-		_gizmo.update_drag(_level_root.get_global_mouse_position())
+		_gizmo.update_drag(_world_position(motion.position))
 		get_viewport().set_input_as_handled()
 		return
 	if _handle_view_input(event):
@@ -195,12 +209,22 @@ func _unhandled_input(event: InputEvent) -> void:
 			_wiring_source = null
 			_wire_preview.hide()
 			_refresh_ui()
-			_try_connect(source, _block_at(_level_root.get_global_mouse_position()))
+			_try_connect(source, _block_at(_world_position(button.position)))
 		elif _gizmo.is_dragging():
 			_gizmo.end_drag()
 		get_viewport().set_input_as_handled()
 		return
-	var world_point := _level_root.get_global_mouse_position()
+	var world_point: Vector2 = _world_position(button.position)
+	if (
+		is_instance_valid(_selection) and not WireService.source_signal(_selection).is_empty()
+		and world_point.distance_to(WireLayer.port_position(_selection, true)) <= 12.0
+		and _placing_key.is_empty() and not _setting_destination
+	):
+		_begin_wire()
+		_wire_dragging = is_instance_valid(_wiring_source)
+		_wire_preview.visible = _wire_dragging
+		get_viewport().set_input_as_handled()
+		return
 	if button.shift_pressed and _manager.build_wire_limit > 0:
 		_select(_block_at(world_point))
 		_begin_wire()
@@ -212,15 +236,18 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _setting_destination and is_instance_valid(_selected_link):
 		var target := _selected_link.get_target()
 		if target != null and _manager.build_bounds.has_point(world_point):
-			_selected_link.move_offset = world_point - target.global_position
+			var parent := target.get_parent() as Node2D
+			var local_destination := parent.to_local(world_point) if parent != null else world_point
+			_selected_link.move_offset = local_destination - target.position
 			_setting_destination = false
 			_refresh_ui()
 		get_viewport().set_input_as_handled()
 		return
 	if _wiring_source != null:
-		_try_connect(_wiring_source, _block_at(world_point))
+		var source: Node2D = _wiring_source
 		_wiring_source = null
 		_refresh_ui()
+		_try_connect(source, _block_at(world_point))
 		get_viewport().set_input_as_handled()
 		return
 	if not _placing_key.is_empty():
@@ -347,10 +374,18 @@ func _build_ui() -> void:
 	wire_box.add_theme_constant_override("separation", 8)
 	_wire_panel.add_child(wire_box)
 	var wire_title := Label.new()
-	wire_title.text = "电线动作"
+	wire_title.text = "接线 / 机关动作"
 	wire_title.add_theme_font_size_override("font_size", 18)
 	wire_title.add_theme_color_override("font_color", Color(1.0, 0.72, 0.0))
 	wire_box.add_child(wire_title)
+	_source_controls = VBoxContainer.new()
+	wire_box.add_child(_source_controls)
+	_source_hint = Label.new()
+	_source_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_source_hint.custom_minimum_size.x = 224.0
+	_source_controls.add_child(_source_hint)
+	_connect_button = _make_button("从这个开关接线", _begin_wire)
+	_source_controls.add_child(_connect_button)
 	_wire_controls = VBoxContainer.new()
 	_wire_controls.add_theme_constant_override("separation", 6)
 	wire_box.add_child(_wire_controls)
@@ -358,7 +393,7 @@ func _build_ui() -> void:
 	var angle_row := HBoxContainer.new()
 	_wire_controls.add_child(angle_row)
 	angle_row.add_child(_make_label("旋转角度"))
-	var angle_spin := _make_spin(-360.0, 360.0, 15.0)
+	var angle_spin := _make_spin(-360.0, 360.0, 0.1)
 	angle_spin.value_changed.connect(func(value: float) -> void:
 		if is_instance_valid(_selected_link):
 			_selected_link.rotate_degrees = value)
@@ -367,7 +402,7 @@ func _build_ui() -> void:
 	var move_row := HBoxContainer.new()
 	_wire_controls.add_child(move_row)
 	move_row.add_child(_make_label("移动速度"))
-	var move_spin := _make_spin(1.0, 2000.0, 10.0)
+	var move_spin := _make_spin(1.0, 2000.0, 1.0)
 	move_spin.value_changed.connect(func(value: float) -> void:
 		if is_instance_valid(_selected_link):
 			_selected_link.move_speed = value)
@@ -376,7 +411,7 @@ func _build_ui() -> void:
 	var rotate_row := HBoxContainer.new()
 	_wire_controls.add_child(rotate_row)
 	rotate_row.add_child(_make_label("旋转速度"))
-	var rotate_spin := _make_spin(1.0, 2000.0, 10.0)
+	var rotate_spin := _make_spin(1.0, 2000.0, 1.0)
 	rotate_spin.value_changed.connect(func(value: float) -> void:
 		if is_instance_valid(_selected_link):
 			_selected_link.rotate_speed = value)
@@ -455,8 +490,20 @@ func _refresh_ui() -> void:
 		button.disabled = int(_remaining[key]) <= 0 or _testing
 		_inventory_box.add_child(button)
 	_recycle_button.disabled = _testing or not _placed.has(_selection)
-	_wire_panel.visible = is_instance_valid(_selected_link) and not _testing
-	if _wire_panel.visible:
+	var source_selected: bool = not WireService.source_signal(_selection).is_empty()
+	_wire_panel.visible = (is_instance_valid(_selected_link) or source_selected) and not _testing
+	_source_controls.visible = source_selected
+	_wire_controls.visible = is_instance_valid(_selected_link)
+	if source_selected:
+		var reason: String = _wire_source_error(_selection)
+		_source_hint.text = reason if not reason.is_empty() else "可接线 %d / %d · 点击接线后选择目标，或拖动开关右侧端口。" % [
+			_manager.build_wire_limit - _links.size(), _manager.build_wire_limit]
+		_connect_button.disabled = not reason.is_empty()
+	if is_instance_valid(_wire_overlay):
+		_wire_overlay.visible = not _testing
+		_wire_overlay.set_source_hint(_selection if source_selected and _wire_source_error(_selection).is_empty() else null)
+		_sync_action_destination_hint()
+	if _wire_panel.visible and is_instance_valid(_selected_link):
 		for child in _wire_controls.get_children():
 			for control in child.get_children():
 				_sync_wire_control(control)
@@ -468,9 +515,11 @@ func _refresh_ui() -> void:
 		_status_label.text = "点击场景放置：%s" % str(
 			_entry_for_key(_placing_key).get("label", "元件"))
 	else:
-		_status_label.text = "拖动手柄旋转或缩放；滚轮缩放视图；Shift+拖动开关接线。"
+		_status_label.text = "拖动手柄旋转或缩放；滚轮缩放视图；选中开关可接线。"
+		if not _configuration_errors.is_empty():
+			_status_label.text = "关卡配置待完善：" + _configuration_errors[0]
 	if _wiring_source != null:
-		_status_label.text = "拖到允许连接的机关，松开鼠标完成接线。"
+		_status_label.text = "点击允许连接的机关，或拖到目标后松开鼠标。"
 	if _setting_destination:
 		_status_label.text = "点击场景，指定机关运动终点。"
 	if _ghost != null:
@@ -654,39 +703,46 @@ func _recycle_selected() -> void:
 	_refresh_ui()
 
 
+func _wire_source_error(source: Node2D) -> String:
+	if _testing:
+		return "请先返回搭建阶段。"
+	if _manager.build_wire_limit <= 0:
+		return "本关未提供玩家电线。"
+	if _links.size() >= _manager.build_wire_limit:
+		return "电线已用完，请先拆除已有电线。"
+	if WireService.source_signal(source).is_empty():
+		return "请选择触发开关或压力传感器。"
+	if not _placed.has(source) and not _manager.build_wire_sources.has(str(_blocks.get_path_to(source))):
+		return "设计者未开放这个预置开关的接线权限。"
+	return ""
+
+
 func _begin_wire() -> void:
-	if _manager.build_wire_limit <= _links.size() or not is_instance_valid(_selection):
-		return
-	if not (_selection is TriggerSwitch or _selection is PressureSensor):
-		_status_label.text = "请选择触发开关或压力传感器。"
-		return
-	if not _placed.has(_selection) and not _manager.build_wire_sources.has(
-		str(_blocks.get_path_to(_selection))):
-		_status_label.text = "设计者尚未开放这个预置开关的接线权限。"
+	var reason: String = _wire_source_error(_selection)
+	if not reason.is_empty():
+		_status_label.text = reason
 		return
 	_placing_key = ""
+	_setting_destination = false
 	_wiring_source = _selection
 	_refresh_ui()
 
 
 func _try_connect(source: Node2D, target: Node2D) -> void:
-	if target == null or target == source or not _can_wire_target(target):
-		_status_label.text = "这个目标未开放玩家接线。"
+	var reason: String = _wire_source_error(source)
+	if reason.is_empty():
+		reason = WireService.connection_error(_blocks, source, target)
+	if reason.is_empty() and not _can_wire_target(target):
+		reason = "设计者未开放这个目标的接线权限。"
+	if not reason.is_empty():
+		_status_label.text = reason
 		return
-	if _link_for_target(target) != null or _any_existing_link(target):
-		_status_label.text = "该机关已有电线。"
-		return
-	var link := ACTION_LINK_SCENE.instantiate() as ActionLink
-	link.name = _unique_name("PlayerWire")
-	_blocks.add_child(link)
-	link.target_node = link.get_path_to(target)
-	link.resolve_target()
-	var signal_name: StringName = &"active_changed" if source is TriggerSwitch else &"pressed_changed"
-	if source.connect(signal_name, Callable(link, ActionLink.METHOD_NAME)) != OK:
-		link.queue_free()
+	var link: ActionLink = WireService.create_wire(_blocks, source, target)
+	if link == null:
+		_status_label.text = "接线失败，请重新选择开关和目标。"
 		return
 	_links.append(link)
-	var line := Line2D.new()
+	var line: Line2D = Line2D.new()
 	line.width = 2.0
 	line.default_color = Color(1.0, 0.65, 0.25)
 	_blocks.add_child(line)
@@ -696,17 +752,13 @@ func _try_connect(source: Node2D, target: Node2D) -> void:
 
 
 func _can_wire_target(target: Node2D) -> bool:
-	if _placed.has(target):
-		return true
-	return _manager.build_wire_targets.has(str(_blocks.get_path_to(target)))
+	if not WireService.is_target(target):
+		return false
+	return _placed.has(target) or _manager.build_wire_targets.has(str(_blocks.get_path_to(target)))
 
 
-func _any_existing_link(target: Node2D) -> bool:
-	for child in _blocks.get_children():
-		var link := child as ActionLink
-		if link != null and link.get_target() == target:
-			return true
-	return false
+func _world_position(screen_position: Vector2) -> Vector2:
+	return get_viewport().get_canvas_transform().affine_inverse() * screen_position
 
 
 func _link_for_target(target: Node2D) -> ActionLink:
@@ -732,6 +784,19 @@ func _begin_destination() -> void:
 	_refresh_ui()
 
 
+func _sync_action_destination_hint() -> void:
+	if not is_instance_valid(_wire_overlay):
+		return
+	if _testing or not is_instance_valid(_selected_link):
+		_wire_overlay.set_action_hint(null)
+		return
+	if _setting_destination:
+		_wire_overlay.set_action_hint(
+			_selected_link, true, _level_root.get_global_mouse_position())
+	else:
+		_wire_overlay.set_action_hint(_selected_link)
+
+
 func _remove_selected_wire() -> void:
 	if is_instance_valid(_selected_link):
 		_remove_link(_selected_link)
@@ -740,17 +805,11 @@ func _remove_selected_wire() -> void:
 
 
 func _remove_link(link: ActionLink) -> void:
-	var source := _source_for_link(link)
-	if source != null:
-		var signal_name: StringName = &"active_changed" if source is TriggerSwitch else &"pressed_changed"
-		var callback := Callable(link, ActionLink.METHOD_NAME)
-		if source.is_connected(signal_name, callback):
-			source.disconnect(signal_name, callback)
 	if _wire_lines.has(link):
 		(_wire_lines[link] as Node).queue_free()
 		_wire_lines.erase(link)
 	_links.erase(link)
-	link.queue_free()
+	WireService.remove_wire(link)
 
 
 func _sync_placed_origin(block: Node2D) -> void:
@@ -818,6 +877,8 @@ func _return_to_build() -> void:
 
 
 func _toggle_test() -> void:
+	if get_tree().paused or SceneTransition.is_transitioning():
+		return
 	if _testing:
 		_return_to_build()
 	else:

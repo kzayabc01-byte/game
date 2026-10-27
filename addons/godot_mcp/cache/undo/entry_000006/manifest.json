@@ -1,0 +1,12 @@
+{
+  "args_summary": "create_scene(scene_path=res://blocks/opaque_wall/opaque_wall.tscn)",
+  "files": [
+    {
+      "kind": "created",
+      "path": "res://blocks/opaque_wall/opaque_wall.tscn"
+    }
+  ],
+  "id": "000006",
+  "timestamp": 1793071056.0,
+  "tool": "create_scene"
+}

@@ -1,0 +1,13 @@
+{
+  "args_summary": "call_method(scene_path=res://scenes/levels/level_09_说明.tscn, node_path=LevelManager, method=set)",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000004/files/scenes/levels/level_09_说明.tscn",
+      "kind": "snapshot",
+      "path": "res://scenes/levels/level_09_说明.tscn"
+    }
+  ],
+  "id": "000004",
+  "timestamp": 1793069853.0,
+  "tool": "call_method"
+}

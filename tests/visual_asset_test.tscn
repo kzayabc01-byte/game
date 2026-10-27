@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://4t6kdx7fkj64"]
+
+[ext_resource type="Script" uid="uid://dtuvh7yu34e12" path="res://tests/visual_asset_test.gd" id="1_dm1hb"]
+
+[node name="VisualAssetTest" type="Node"]
+script = ExtResource("1_dm1hb")

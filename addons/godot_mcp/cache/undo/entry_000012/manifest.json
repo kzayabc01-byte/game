@@ -1,0 +1,18 @@
+{
+  "args_summary": "batch_execute",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000012/files/scenes/levels/level_base.tscn",
+      "kind": "snapshot",
+      "path": "res://scenes/levels/level_base.tscn"
+    },
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000012/files/scenes/editor/level_editor.tscn",
+      "kind": "snapshot",
+      "path": "res://scenes/editor/level_editor.tscn"
+    }
+  ],
+  "id": "000012",
+  "timestamp": 1793089635.0,
+  "tool": "batch_execute"
+}

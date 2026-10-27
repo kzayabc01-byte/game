@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3 uid="uid://burwus8s02lju"]
 
-[ext_resource type="Script" path="res://scenes/editor/level_editor.gd" id="1_editor"]
-[ext_resource type="Script" path="res://core/light_ray_renderer.gd" id="2_ray"]
-[ext_resource type="Script" path="res://scenes/editor/wire_layer.gd" id="3_wire"]
-[ext_resource type="Script" path="res://scenes/editor/handles.gd" id="4_gizmo"]
+[ext_resource type="Script" uid="uid://c2p8e8bvnbamy" path="res://scenes/editor/level_editor.gd" id="1_editor"]
+[ext_resource type="Script" uid="uid://drsmklunhhnwd" path="res://core/light_ray_renderer.gd" id="2_ray"]
+[ext_resource type="Script" uid="uid://cd8p23a5e35w3" path="res://scenes/editor/wire_layer.gd" id="3_wire"]
+[ext_resource type="Script" uid="uid://c5l6gjrblw0on" path="res://scenes/editor/handles.gd" id="4_gizmo"]
+[ext_resource type="Texture2D" uid="uid://c63f4rp50syjv" path="res://assets/mechanisms/textures/light_background.png" id="5_s6b7r"]
 
 [node name="LevelEditor" type="Control"]
 layout_mode = 3
@@ -32,3 +33,27 @@ script = ExtResource("4_gizmo")
 position = Vector2(576, 324)
 
 [node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Background" type="CanvasLayer" parent="."]
+layer = -100
+
+[node name="Texture" type="TextureRect" parent="Background"]
+modulate = Color(0.86, 0.9, 0.94, 1)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("5_s6b7r")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Wash" type="ColorRect" parent="Background"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.73, 0.79, 0.84, 0.16)

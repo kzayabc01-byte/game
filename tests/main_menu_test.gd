@@ -82,6 +82,7 @@ func _ready() -> void:
 	_check("通关记录按 ID 解锁下一关", ChapterCatalog.is_unlocked(
 			"8bce041e-50c8-4c02-bdd9-d0d7aeb155d4"))
 	var test_scene_root := get_tree().current_scene
+	LevelRunContext.prepare(LEVEL_01, LevelRunContext.Mode.OFFICIAL)
 	var gameplay := (load(LEVEL_01) as PackedScene).instantiate()
 	get_tree().root.add_child(gameplay)
 	get_tree().current_scene = gameplay
@@ -95,14 +96,35 @@ func _ready() -> void:
 	_check("正式关卡胜利保存进度并奖励 50 金币",
 			ProgressStore.get_coins() == coins_before + 50)
 	_check("通关结算提供下一关和重玩",
-			gameplay_manager._result_screen.visible
-			and gameplay_manager._result_layer.visible
-			and gameplay_manager._result_screen.size.x > 400.0
-			and _find_button(gameplay_manager._result_screen, "下一关") != null
-			and _find_button(gameplay_manager._result_screen, "重玩") != null)
+			gameplay_manager._result_view.screen.visible
+			and gameplay_manager._result_view.visible
+			and gameplay_manager._result_view.screen.size.x > 400.0
+			and _find_button(gameplay_manager._result_view.screen, "下一关") != null
+			and _find_button(gameplay_manager._result_view.screen, "重玩") != null)
 	get_tree().current_scene = test_scene_root
 	gameplay.queue_free()
 	await get_tree().process_frame
+	var coins_after_official: int = ProgressStore.get_coins()
+	LevelRunContext.prepare(LEVEL_01, LevelRunContext.Mode.PREVIEW)
+	var preview: Node = (load(LEVEL_01) as PackedScene).instantiate()
+	add_child(preview)
+	await get_tree().process_frame
+	var preview_manager: LevelManager = preview.get_node("LevelManager") as LevelManager
+	preview_manager._on_cocoon_activated()
+	await get_tree().process_frame
+	_check("工坊预览已发布关卡也不发金币", ProgressStore.get_coins() == coins_after_official)
+	_check("预览结算返回工坊且没有下一关",
+		_find_button(preview_manager._result_view, "返回工坊") != null
+		and _find_button(preview_manager._result_view, "下一关") == null)
+	_check("预览隐藏金币升级入口", not (preview_manager.get_node("LevelHUD/UpgradeButton") as Button).visible)
+	preview_manager._on_upgrade_pressed()
+	_check("预览不能消费正式金币", ProgressStore.get_coins() == coins_after_official)
+	preview.queue_free()
+	await get_tree().process_frame
+	LevelRunContext.prepare(LEVEL_01, LevelRunContext.Mode.OFFICIAL)
+	_check("不同关卡不会继承正式入口凭证",
+		LevelRunContext.take("res://tests/no_level.tscn") == LevelRunContext.Mode.PREVIEW)
+	_check("入口凭证只使用一次", LevelRunContext.take(LEVEL_01) == LevelRunContext.Mode.PREVIEW)
 	menu._show_chapter(2)
 	play_texts = _collect_control_texts(menu.get_node("%LevelList"))
 	_check("第二章展示传送门正式关", _has(play_texts, "传送门"))

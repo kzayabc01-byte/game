@@ -1,0 +1,13 @@
+{
+  "args_summary": "set_node_properties(scene_path=res://blocks/opaque_wall/opaque_wall.tscn, node_path=.)",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000007/files/blocks/opaque_wall/opaque_wall.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/opaque_wall/opaque_wall.tscn"
+    }
+  ],
+  "id": "000007",
+  "timestamp": 1793071070.0,
+  "tool": "set_node_properties"
+}

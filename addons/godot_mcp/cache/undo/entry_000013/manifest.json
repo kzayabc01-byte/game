@@ -1,0 +1,12 @@
+{
+  "args_summary": "create_scene(scene_path=res://blocks/dark_slope/dark_slope_short.tscn)",
+  "files": [
+    {
+      "kind": "created",
+      "path": "res://blocks/dark_slope/dark_slope_short.tscn"
+    }
+  ],
+  "id": "000013",
+  "timestamp": 1793089651.0,
+  "tool": "create_scene"
+}

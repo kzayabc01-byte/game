@@ -9,6 +9,9 @@ extends Node2D
 const SAMPLE_COUNT := 24
 const HIT_DISTANCE := 8.0
 const PORT_OFFSET := 26.0
+const ACTION_HINT_COLOR := Color(1.0, 0.72, 0.18)
+const ACTION_HINT_DASH_LENGTH := 12.0
+const ACTION_HINT_DASH_GAP := 7.0
 
 ## 电线颜色按信号区分：触发开关橙色 / 压力传感器蓝色
 const SIGNAL_COLORS := {
@@ -31,6 +34,11 @@ var preview_active := false
 var preview_from := Vector2.ZERO
 var preview_to := Vector2.ZERO
 
+## 玩家搭建时选中电线的动作终点提示；只负责绘制，不改变 ActionLink 参数。
+var _action_hint_link: ActionLink = null
+var _action_hint_choosing := false
+var _action_hint_endpoint_override := Vector2.ZERO
+
 var selected_index: int = -1:
 	set(value):
 		selected_index = value
@@ -48,7 +56,11 @@ func _process(_delta: float) -> void:
 				selected_index = -1
 			elif selected_index > i:
 				selected_index -= 1
-	if not _wires.is_empty() or preview_active or _highlight != null or _source_hint != null:
+	if is_instance_valid(_action_hint_link) and _action_hint_link.get_target() == null:
+		_action_hint_link = null
+		_action_hint_choosing = false
+	if (not _wires.is_empty() or preview_active or _highlight != null
+			or _source_hint != null or is_instance_valid(_action_hint_link)):
 		queue_redraw()
 
 
@@ -61,6 +73,8 @@ func _draw() -> void:
 		draw_arc(_highlight.global_position, 44.0, 0.0, TAU, 40, Color(0.4, 1.0, 0.5, 0.8), 3.0)
 	if _source_hint != null and is_instance_valid(_source_hint):
 		_draw_source_hint()
+	if is_instance_valid(_action_hint_link):
+		_draw_action_destination_hint()
 
 
 ## 建立一条电线记录。连接（开关信号 → link._on_signal）由编辑器先 connect 好，这里只建档画线。
@@ -87,13 +101,7 @@ func remove_wire(index: int) -> bool:
 		return false
 	var wire: Dictionary = _wires[index]
 	var link := wire["link"] as ActionLink
-	var source := wire["source"] as Node
-	if is_instance_valid(source) and source.is_connected(wire["signal"], Callable(link, ActionLink.METHOD_NAME)):
-		source.disconnect(wire["signal"], Callable(link, ActionLink.METHOD_NAME))
-	if is_instance_valid(link):
-		if link.is_editor_preview_active():
-			link.set_editor_preview_active(false)
-		link.queue_free()
+	WireService.remove_wire(link)
 	_wires.remove_at(index)
 	if selected_index == index:
 		selected_index = -1
@@ -212,6 +220,34 @@ func set_source_hint(node: Node2D) -> void:
 	queue_redraw()
 
 
+## 显示机关动作终点。choosing=true 时 endpoint_override 是鼠标正在指向的候选终点。
+func set_action_hint(
+		link: ActionLink,
+		choosing := false,
+		endpoint_override := Vector2.ZERO,
+) -> void:
+	_action_hint_link = link
+	_action_hint_choosing = choosing and is_instance_valid(link)
+	_action_hint_endpoint_override = endpoint_override
+	queue_redraw()
+
+
+func has_action_hint() -> bool:
+	return is_instance_valid(_action_hint_link) and _action_hint_link.get_target() != null
+
+
+func get_action_hint_endpoint() -> Vector2:
+	if not has_action_hint():
+		return Vector2.ZERO
+	if _action_hint_choosing:
+		return _action_hint_endpoint_override
+	var target := _action_hint_link.get_target()
+	var parent := target.get_parent() as Node2D
+	if parent != null:
+		return parent.to_global(target.position + _action_hint_link.move_offset)
+	return target.global_position + _action_hint_link.move_offset
+
+
 # ---------- 内部实现 ----------
 
 
@@ -307,6 +343,67 @@ func _draw_preview() -> void:
 		dash.append(points[i])
 		dash.append(points[i + 1])
 	draw_multiline(dash, Color(1, 1, 1, 0.7), 2.0)
+
+
+## 当前位置 → 动作终点：虚线路径、箭头、目标机关的半透明轮廓和文字标签。
+func _draw_action_destination_hint() -> void:
+	var target := _action_hint_link.get_target()
+	if target == null:
+		return
+	var origin := target.global_position
+	var endpoint := get_action_hint_endpoint()
+	var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.006)
+	var hint_color := ACTION_HINT_COLOR.lightened(0.12) if _action_hint_choosing \
+			else ACTION_HINT_COLOR
+	_draw_dashed_segment(origin, endpoint, Color(hint_color, 0.9), 2.0)
+	_draw_action_arrow(origin, endpoint, hint_color)
+
+	var size := PaletteData.entry_size(target.scene_file_path)
+	var final_rotation := target.global_rotation + deg_to_rad(_action_hint_link.rotate_degrees)
+	var final_scale := target.global_scale
+	var half := size * 0.5
+	var corners := PackedVector2Array([
+		endpoint + (Vector2(-half.x, -half.y) * final_scale).rotated(final_rotation),
+		endpoint + (Vector2(half.x, -half.y) * final_scale).rotated(final_rotation),
+		endpoint + (Vector2(half.x, half.y) * final_scale).rotated(final_rotation),
+		endpoint + (Vector2(-half.x, half.y) * final_scale).rotated(final_rotation),
+	])
+	draw_colored_polygon(corners, Color(hint_color, 0.12 + pulse * 0.05))
+	for index in corners.size():
+		draw_line(corners[index], corners[(index + 1) % corners.size()],
+				Color(hint_color, 0.72 + pulse * 0.2), 2.0)
+	draw_circle(endpoint, 9.0 + pulse * 3.0, Color(hint_color, 0.12), false, 2.0)
+	draw_line(endpoint - Vector2(6.0, 0.0), endpoint + Vector2(6.0, 0.0), hint_color, 2.0)
+	draw_line(endpoint - Vector2(0.0, 6.0), endpoint + Vector2(0.0, 6.0), hint_color, 2.0)
+
+	var label := "点击设为终点" if _action_hint_choosing else "运动终点"
+	var font := ThemeDB.fallback_font
+	var text_size := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
+	var label_position := endpoint + Vector2(14.0, -18.0)
+	var label_box := Rect2(label_position - Vector2(5.0, 15.0), text_size + Vector2(10.0, 8.0))
+	draw_rect(label_box, Color(0.04, 0.045, 0.04, 0.82), true)
+	draw_rect(label_box, Color(hint_color, 0.7), false, 1.0)
+	draw_string(font, label_position, label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, hint_color)
+
+
+func _draw_dashed_segment(from: Vector2, to: Vector2, color: Color, width: float) -> void:
+	var distance := from.distance_to(to)
+	if distance < 0.5:
+		return
+	var direction := (to - from) / distance
+	var cursor := 0.0
+	while cursor < distance:
+		var dash_end := minf(cursor + ACTION_HINT_DASH_LENGTH, distance)
+		draw_line(from + direction * cursor, from + direction * dash_end, color, width)
+		cursor += ACTION_HINT_DASH_LENGTH + ACTION_HINT_DASH_GAP
+
+
+func _draw_action_arrow(from: Vector2, to: Vector2, color: Color) -> void:
+	if from.distance_squared_to(to) < 64.0:
+		return
+	var backward := (from - to).normalized()
+	draw_line(to, to + backward.rotated(0.55) * 15.0, color, 2.5)
+	draw_line(to, to + backward.rotated(-0.55) * 15.0, color, 2.5)
 
 
 func _point_to_segment_distance(point: Vector2, a: Vector2, b: Vector2) -> float:

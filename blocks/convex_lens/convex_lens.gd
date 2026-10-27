@@ -44,14 +44,13 @@ func _draw() -> void:
 	var half := size / 2.0
 	var color := Color(0.45, 0.95, 0.85, 0.95)
 
-	# 凸透镜：两条向外拱的弧 + 上下薄边
-	var r := half.y
-	draw_arc(Vector2(-half.x, 0.0), r, -PI * 0.5, PI * 0.5, 18, color, 2.0)
-	draw_arc(Vector2(half.x, 0.0), r, PI * 0.5, PI * 1.5, 18, color, 2.0)
-	draw_line(Vector2(-half.x, -r), Vector2(half.x, -r), color, 2.0)
-	draw_line(Vector2(-half.x, r), Vector2(half.x, r), color, 2.0)
-
-	# 聚光示意：一条粗光进入，一条细光射出
-	draw_line(Vector2(-half.x - 26.0, -10.0), Vector2.ZERO, Color(1.0, 0.85, 0.3, 0.55), 6.0)
-	draw_line(Vector2(-half.x - 26.0, 10.0), Vector2.ZERO, Color(1.0, 0.85, 0.3, 0.55), 6.0)
-	draw_line(Vector2.ZERO, Vector2(half.x + 40.0, 0.0), Color(1.0, 0.95, 0.55, 0.95), 2.0)
+	# 贴图缺失时仍提供可读的编辑器占位轮廓。
+	var outline := PackedVector2Array([
+		Vector2(-half.x * 0.17, -half.y), Vector2(half.x * 0.17, -half.y),
+		Vector2(half.x * 0.67, -half.y * 0.75), Vector2(half.x, 0.0),
+		Vector2(half.x * 0.67, half.y * 0.75), Vector2(half.x * 0.17, half.y),
+		Vector2(-half.x * 0.17, half.y), Vector2(-half.x * 0.67, half.y * 0.75),
+		Vector2(-half.x, 0.0), Vector2(-half.x * 0.67, -half.y * 0.75),
+		Vector2(-half.x * 0.17, -half.y),
+	])
+	draw_polyline(outline, color, 2.0, true)

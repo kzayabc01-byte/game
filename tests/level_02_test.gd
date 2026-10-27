@@ -10,7 +10,7 @@ var _failed := false
 
 
 func _ready() -> void:
-	GameEvents.level_completed.connect(_on_level_completed)
+	(owner.get_node("LevelManager") as LevelManager).completed.connect(_on_level_completed)
 	_run_test()
 
 

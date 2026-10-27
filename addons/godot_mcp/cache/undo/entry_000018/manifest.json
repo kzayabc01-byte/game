@@ -1,0 +1,12 @@
+{
+  "args_summary": "create_scene(scene_path=res://tests/visual_asset_test.tscn)",
+  "files": [
+    {
+      "kind": "created",
+      "path": "res://tests/visual_asset_test.tscn"
+    }
+  ],
+  "id": "000018",
+  "timestamp": 1793089754.0,
+  "tool": "create_scene"
+}

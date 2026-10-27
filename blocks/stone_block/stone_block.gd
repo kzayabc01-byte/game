@@ -87,13 +87,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
-	# 占位外观：灰色石块 + 裂纹
+	# 材质填充由 Visual 子节点负责；这里保留轮廓和少量裂纹识别特征。
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
-	var size := Vector2(64, 64)
-	if shape_node != null and shape_node.shape is RectangleShape2D:
-		size = (shape_node.shape as RectangleShape2D).size
-	var half := size / 2.0
-	draw_rect(Rect2(-half, size), Color(0.42, 0.4, 0.36))
-	draw_rect(Rect2(-half, size), Color(0.65, 0.6, 0.53), false, 2.0)
-	draw_line(Vector2(-half.x * 0.4, half.y * 0.5), Vector2(half.x * 0.1, -half.y * 0.4), Color(0.55, 0.51, 0.46), 2.0)
-	draw_line(Vector2(half.x * 0.1, -half.y * 0.4), Vector2(half.x * 0.5, half.y * 0.1), Color(0.55, 0.51, 0.46), 2.0)
+	if shape_node == null or not shape_node.shape is ConvexPolygonShape2D:
+		return
+	var points := (shape_node.shape as ConvexPolygonShape2D).points
+	if points.size() < 3:
+		return
+	var outline := points.duplicate()
+	outline.append(points[0])
+	draw_polyline(outline, Color(0.54, 0.5, 0.44), 2.0, true)
+	draw_line(Vector2(-14.0, 17.0), Vector2(2.0, -13.0), Color(0.45, 0.41, 0.36), 1.5)
+	draw_line(Vector2(2.0, -13.0), Vector2(17.0, 6.0), Color(0.45, 0.41, 0.36), 1.5)

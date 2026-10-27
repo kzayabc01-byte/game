@@ -1,0 +1,130 @@
+[gd_scene format=3 uid="uid://dkfv5qyidjkyv"]
+
+[ext_resource type="Script" uid="uid://kp5cwyiuspgi" path="res://core/light_system.gd" id="1_system"]
+[ext_resource type="Script" uid="uid://d0ts3adkqxgb1" path="res://core/level_manager.gd" id="2_manager"]
+
+[node name="Level" type="Node2D" unique_id=214885035]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1501904556]
+position = Vector2(576, 324)
+
+[node name="Blocks" type="Node2D" parent="." unique_id=1701157012]
+
+[node name="LightSystem" type="Node" parent="." unique_id=863915790]
+script = ExtResource("1_system")
+pulse_mode = true
+
+[node name="LevelManager" type="Node" parent="." unique_id=484672219]
+process_mode = 3
+script = ExtResource("2_manager")
+
+[node name="PauseMenu" type="CanvasLayer" parent="LevelManager" unique_id=415694457]
+layer = 20
+visible = false
+
+[node name="Dim" type="ColorRect" parent="LevelManager/PauseMenu" unique_id=2029783884]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.5882353)
+
+[node name="Center" type="CenterContainer" parent="LevelManager/PauseMenu" unique_id=977499470]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="PanelContainer" type="PanelContainer" parent="LevelManager/PauseMenu/Center" unique_id=578044895]
+custom_minimum_size = Vector2(240, 240)
+layout_mode = 2
+
+[node name="Padding" type="MarginContainer" parent="LevelManager/PauseMenu/Center/PanelContainer" unique_id=38542579]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Buttons" type="VBoxContainer" parent="LevelManager/PauseMenu/Center/PanelContainer/Padding" unique_id=1323806760]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Heading" type="Label" parent="LevelManager/PauseMenu/Center/PanelContainer/Padding/Buttons" unique_id=1711734757]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "暂停"
+
+[node name="ResumeButton" type="Button" parent="LevelManager/PauseMenu/Center/PanelContainer/Padding/Buttons" unique_id=933941904]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+text = "继续游戏"
+
+[node name="RestartButton" type="Button" parent="LevelManager/PauseMenu/Center/PanelContainer/Padding/Buttons" unique_id=1808370506]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+text = "重玩本关"
+
+[node name="SelectButton" type="Button" parent="LevelManager/PauseMenu/Center/PanelContainer/Padding/Buttons" unique_id=2016825922]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+text = "选择关卡"
+
+[node name="HomeButton" type="Button" parent="LevelManager/PauseMenu/Center/PanelContainer/Padding/Buttons" unique_id=2042425235]
+custom_minimum_size = Vector2(36, 36)
+layout_mode = 2
+text = "回到首页"
+
+[node name="LevelHUD" type="CanvasLayer" parent="LevelManager" unique_id=1405151958]
+layer = 10
+
+[node name="WinLabel" type="Label" parent="LevelManager/LevelHUD" unique_id=1077408447]
+custom_minimum_size = Vector2(500, 100)
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -0.5
+offset_top = -11.5
+offset_right = 0.5
+offset_bottom = 11.5
+grow_horizontal = 2
+grow_vertical = 2
+text = "完成！蚕茧已激发"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HintLabel" type="Label" parent="LevelManager/LevelHUD" unique_id=74352552]
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -23.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "鼠标瞄准 · 空格发射 · 左键选择光源 · R 重置关卡 · Esc 暂停"
+
+[node name="CoinsLabel" type="Label" parent="LevelManager/LevelHUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 14.0
+offset_right = -14.0
+offset_bottom = 38.0
+grow_horizontal = 0
+horizontal_alignment = 2
+
+[node name="UpgradeButton" type="Button" parent="LevelManager/LevelHUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 42.0
+offset_right = -14.0
+offset_bottom = 78.0
+grow_horizontal = 0
+text = "升级瞄准虚线 · 100 金币"

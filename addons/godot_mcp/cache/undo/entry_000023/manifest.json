@@ -1,0 +1,17 @@
+{
+  "args_summary": "rename_file(old_path=res://assets/materials/main_menu_background_preview.png, new_path=res://assets/materials/editor_background_preview.png)",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000023/files/assets/materials/main_menu_background_preview.png",
+      "kind": "deleted",
+      "path": "res://assets/materials/main_menu_background_preview.png"
+    },
+    {
+      "kind": "created",
+      "path": "res://assets/materials/editor_background_preview.png"
+    }
+  ],
+  "id": "000023",
+  "timestamp": 1793090394.0,
+  "tool": "rename_file"
+}

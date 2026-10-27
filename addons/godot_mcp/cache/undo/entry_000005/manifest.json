@@ -1,0 +1,12 @@
+{
+  "args_summary": "create_scene(scene_path=res://tests/_configure_level09_once.tscn)",
+  "files": [
+    {
+      "kind": "created",
+      "path": "res://tests/_configure_level09_once.tscn"
+    }
+  ],
+  "id": "000005",
+  "timestamp": 1793069968.0,
+  "tool": "create_scene"
+}

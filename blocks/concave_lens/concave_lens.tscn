@@ -1,6 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3 uid="uid://dic064cfpbhh5"]
 
-[ext_resource type="Script" path="res://blocks/concave_lens/concave_lens.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://cur2emdx2jgko" path="res://blocks/concave_lens/concave_lens.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://bllixe83eiogs" path="res://assets/mechanisms/optics/concave_lens.png" id="2_imq6l"]
+[ext_resource type="Script" uid="uid://dsw7ebpalwxjo" path="res://blocks/optical_art_sprite.gd" id="3_p6efy"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_lens"]
 size = Vector2(24, 96)
@@ -12,3 +14,9 @@ script = ExtResource("1_script")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_lens")
+
+[node name="Art" type="Sprite2D" parent="."]
+z_index = -1
+texture = ExtResource("2_imq6l")
+script = ExtResource("3_p6efy")
+size_multiplier = Vector2(1.55, 1)

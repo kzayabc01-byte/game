@@ -1,12 +1,8 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=5 format=3 uid="uid://cvdufvf1mcq2h"]
 
-[ext_resource type="Script" path="res://blocks/convex_lens/convex_lens.gd" id="1_script"]
-[ext_resource type="Texture2D" path="res://assets/sprites/optics/optics_reference.png" id="2_art"]
-[ext_resource type="Script" path="res://blocks/optical_art_sprite.gd" id="3_fit"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_convex"]
-atlas = ExtResource("2_art")
-region = Rect2(163, 80, 222, 558)
+[ext_resource type="Script" uid="uid://cbvliyotpwpy1" path="res://blocks/convex_lens/convex_lens.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://b04q7es30ixa1" path="res://assets/mechanisms/optics/convex_lens.png" id="2_5a5gy"]
+[ext_resource type="Script" uid="uid://dsw7ebpalwxjo" path="res://blocks/optical_art_sprite.gd" id="3_p37oi"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_lens"]
 resource_local_to_scene = true
@@ -21,8 +17,7 @@ script = ExtResource("1_script")
 shape = SubResource("RectangleShape2D_lens")
 
 [node name="Art" type="Sprite2D" parent="."]
-scale = Vector2(0.11891892, 0.18064517)
-texture = SubResource("AtlasTexture_convex")
-script = ExtResource("3_fit")
-size_multiplier = Vector2(1.1, 1.05)
-editor_description = "原图最左凸透镜。贴图跟随碰撞尺寸，原有聚光能量规则保持不变。"
+z_index = -1
+texture = ExtResource("2_5a5gy")
+script = ExtResource("3_p37oi")
+size_multiplier = Vector2(1.35, 1)

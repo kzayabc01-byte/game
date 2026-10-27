@@ -1,0 +1,12 @@
+{
+  "args_summary": "create_scene(scene_path=res://assets/materials/mechanism_showcase.tscn)",
+  "files": [
+    {
+      "kind": "created",
+      "path": "res://assets/materials/mechanism_showcase.tscn"
+    }
+  ],
+  "id": "000016",
+  "timestamp": 1793089750.0,
+  "tool": "create_scene"
+}

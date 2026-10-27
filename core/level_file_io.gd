@@ -108,27 +108,7 @@ static func validate_level_for_publication(path: String) -> PackedStringArray:
 		errors.append("关卡文件无法载入")
 		return errors
 	var level_root := packed.instantiate()
-	var manager := level_root.get_node_or_null("LevelManager") as LevelManager
-	if manager == null:
-		errors.append("缺少 LevelManager")
-	else:
-		if manager.level_name.strip_edges().is_empty():
-			errors.append("关卡名称不能为空")
-		if manager.chapter < 1 or manager.order_in_chapter < 1:
-			errors.append("章节和章节内顺序必须大于 0")
-	var has_source := false
-	var has_goal := false
-	for node in walk_instance_roots(level_root):
-		has_source = has_source or node is LightSource
-		has_goal = has_goal or node is Cocoon
-		if node is ActionLink:
-			var link := node as ActionLink
-			if link.get_node_or_null(link.target_node) == null:
-				errors.append("电线 %s 的目标机关不存在" % link.name)
-	if not has_source:
-		errors.append("至少需要一个光源")
-	if not has_goal:
-		errors.append("至少需要一个通关目标")
+	errors = LevelValidator.validate(level_root)
 	level_root.free()
 	return errors
 

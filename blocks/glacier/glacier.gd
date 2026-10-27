@@ -26,6 +26,8 @@ var _melted: bool = false
 var _initial_layer: int = 8
 var _pulse_pending := false
 
+@onready var _visual: Node = get_node_or_null("Visual")
+
 
 func _enter_tree() -> void:
 	add_to_group(RESETTABLE_GROUP)
@@ -33,6 +35,7 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_initial_layer = collision_layer
+	_refresh_visual()
 
 
 ## 光线命中：记下“这一帧被照到”，然后照常折射
@@ -66,6 +69,8 @@ func commit_pulse_hit(pulse_seconds: float) -> void:
 		_progress += pulse_seconds * _hit_energy * melt_efficiency / maxf(melt_seconds, 0.01)
 		if _progress >= 1.0:
 			_melt()
+		else:
+			_refresh_visual()
 	_hit_energy = 0.0
 	queue_redraw()
 
@@ -80,11 +85,13 @@ func _physics_process(delta: float) -> void:
 	_progress += delta * _hit_energy * melt_efficiency / maxf(melt_seconds, 0.01)
 	if _progress >= 1.0:
 		_melt()
+	else:
+		_refresh_visual()
 
 
 ## 当前是否“被照亮但能量不足”（给外观提示和测试用）
 func is_underpowered() -> bool:
-	return not _melted and Engine.get_physics_frames() - _hit_frame <= 2 \
+	return not _melted and _hit_frame >= 0 and Engine.get_physics_frames() - _hit_frame <= 2 \
 			and _hit_energy < required_energy
 
 
@@ -102,6 +109,7 @@ func _melt() -> void:
 	_progress = 1.0
 	collision_layer = 0  # 光线直接穿过
 	_disable_shapes(true)
+	_refresh_visual()
 	queue_redraw()
 	melted.emit()
 
@@ -114,6 +122,7 @@ func reset_state() -> void:
 	_pulse_pending = false
 	collision_layer = _initial_layer
 	_disable_shapes(false)
+	_refresh_visual()
 	queue_redraw()
 
 
@@ -123,6 +132,11 @@ func _disable_shapes(disabled: bool) -> void:
 			(child as CollisionShape2D).set_deferred("disabled", disabled)
 
 
+func _refresh_visual() -> void:
+	if is_instance_valid(_visual) and _visual.has_method("set_runtime_opacity"):
+		_visual.call("set_runtime_opacity", 1.0 - _progress)
+
+
 func _draw() -> void:
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	var size := Vector2(64.0, 64.0)
@@ -130,9 +144,6 @@ func _draw() -> void:
 		size = (shape_node.shape as RectangleShape2D).size
 	var half := size / 2.0
 	var alpha := 0.75 * (1.0 - _progress)
-	var body := Color(0.62, 0.86, 1.0, alpha)
-
-	draw_rect(Rect2(-half, size), body)
 	draw_rect(Rect2(-half, size), Color(0.85, 0.95, 1.0, maxf(alpha, 0.15)), false, 2.0)
 
 	if _melted:
@@ -152,4 +163,4 @@ func _draw() -> void:
 		for index in 3:
 			var start := TAU * float(index) / 3.0
 			draw_arc(Vector2.ZERO, radius, start, start + TAU / 6.0, 10,
-					Color(1.0, 0.68, 0.25, 0.9), 2.5)
+					Color(MechanismPalette.ORANGE_GLOW, 0.9), 2.5)

@@ -1,0 +1,34 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scenes/editor/level_editor.gd" id="1_editor"]
+[ext_resource type="Script" path="res://core/light_ray_renderer.gd" id="2_ray"]
+[ext_resource type="Script" path="res://scenes/editor/wire_layer.gd" id="3_wire"]
+[ext_resource type="Script" path="res://scenes/editor/handles.gd" id="4_gizmo"]
+
+[node name="LevelEditor" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_editor")
+
+[node name="World" type="Node2D" parent="."]
+
+[node name="RayRenderer" type="Node2D" parent="World"]
+script = ExtResource("2_ray")
+
+[node name="WireLayer" type="Node2D" parent="World"]
+script = ExtResource("3_wire")
+
+[node name="LevelRoot" type="Node2D" parent="World"]
+
+[node name="Gizmo" type="Node2D" parent="World"]
+script = ExtResource("4_gizmo")
+
+[node name="EditorCamera" type="Camera2D" parent="."]
+position = Vector2(576, 324)
+
+[node name="UI" type="CanvasLayer" parent="."]

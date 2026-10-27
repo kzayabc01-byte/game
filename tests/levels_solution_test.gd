@@ -16,7 +16,6 @@ var _completed := false
 
 
 func _ready() -> void:
-	GameEvents.level_completed.connect(_on_level_completed)
 	for case in CASES:
 		await _run_case(case)
 	print("")
@@ -41,7 +40,7 @@ func _run_case(case: Dictionary) -> void:
 
 	var level := packed.instantiate()
 	var manager := level.get_node("LevelManager") as LevelManager
-	manager.publication_state = LevelManager.PublicationState.DRAFT
+	manager.completed.connect(_on_level_completed)
 	add_child(level)
 	await get_tree().physics_frame
 	await get_tree().physics_frame

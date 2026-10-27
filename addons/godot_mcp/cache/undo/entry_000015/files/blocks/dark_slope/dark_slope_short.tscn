@@ -1,0 +1,45 @@
+[gd_scene load_steps=6 format=3 uid="uid://61bwjb6vkdmh"]
+
+[ext_resource type="Script" uid="uid://c1g7ge3gi00gp" path="res://blocks/dark_slope/dark_slope.gd" id="1_0w74s"]
+[ext_resource type="Shader" uid="uid://bsak3quup3qn6" path="res://assets/materials/shaders/textured_shape.gdshader" id="2_m67dj"]
+[ext_resource type="Texture2D" uid="uid://cl701eeyc5g5i" path="res://assets/mechanisms/textures/dark_stone.png" id="3_k4mch"]
+[ext_resource type="Script" uid="uid://ct1ii6muuxsdi" path="res://assets/materials/mechanism_material_shape_2d.gd" id="4_twdqe"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_dk74f"]
+shader = ExtResource("2_m67dj")
+shader_parameter/albedo_texture = ExtResource("3_k4mch")
+shader_parameter/tile_size_pixels = 220.0
+shader_parameter/texture_scale = Vector2(1, 1)
+shader_parameter/texture_offset = Vector2(0.11, 0.19)
+shader_parameter/tint_color = Color(0.23, 0.28, 0.34, 1)
+shader_parameter/color_concentration = 0.13
+shader_parameter/saturation = 0.78
+shader_parameter/brightness = 0.9
+shader_parameter/contrast = 0.96
+shader_parameter/opacity = 1.0
+shader_parameter/emission_color = Color(1, 1, 1, 1)
+shader_parameter/emission_strength = 0.0
+
+[node name="DarkSlopeShort" type="StaticBody2D"]
+script = ExtResource("1_0w74s")
+
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="."]
+polygon = PackedVector2Array(-72, -32, -34, -18, 10, 3, 72, 25, 72, 32, -72, 32)
+
+[node name="Visual" type="Polygon2D" parent="."]
+z_index = -1
+material = SubResource("ShaderMaterial_dk74f")
+polygon = PackedVector2Array(-72, -32, -34, -18, 10, 3, 72, 25, 72, 32, -72, 32)
+script = ExtResource("4_twdqe")
+material_texture = ExtResource("3_k4mch")
+tile_size_pixels = 220.0
+material_texture_offset = Vector2(0.11, 0.19)
+texture_midpoint = 0.234
+texture_detail_strength = 0.42
+shape_size_pixels = Vector2(144, 64)
+base_color = Color(0.13, 0.145, 0.17, 1)
+tint_color = Color(0.23, 0.28, 0.34, 1)
+color_concentration = 0.13
+saturation = 0.78
+brightness = 0.9
+contrast = 0.96

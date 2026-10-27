@@ -273,7 +273,7 @@ func _make_workshop_card(record: Dictionary) -> PanelContainer:
 	actions.add_theme_constant_override("separation", 6)
 	box.add_child(actions)
 	actions.add_child(_make_small_button("编辑", _on_edit_path.bind(record[&"path"])))
-	actions.add_child(_make_small_button("测试", _on_play_path.bind(record[&"path"])))
+	actions.add_child(_make_small_button("玩家预览", _on_preview_path.bind(record[&"path"])))
 	actions.add_child(_make_small_button("复制", _on_duplicate_path.bind(record[&"path"])))
 	if record[&"published"]:
 		actions.add_child(_make_small_button(
@@ -497,7 +497,24 @@ func _on_edit_path(path: String) -> void:
 
 
 func _on_play_path(path: String) -> void:
-	get_tree().change_scene_to_file(path)
+	var metadata: Dictionary = LevelFileIO.read_level_metadata(path)
+	var level_id: String = str(metadata.get(&"level_id", ""))
+	if not LevelRunContext.can_record(LevelRunContext.Mode.OFFICIAL, level_id, path):
+		_status_label.text = "这个关卡尚未解锁或未发布。"
+		return
+	_launch_level(path, LevelRunContext.Mode.OFFICIAL)
+
+
+func _on_preview_path(path: String) -> void:
+	_launch_level(path, LevelRunContext.Mode.PREVIEW)
+
+
+func _launch_level(path: String, mode: LevelRunContext.Mode) -> void:
+	LevelRunContext.prepare(path, mode)
+	var error: Error = get_tree().change_scene_to_file(path)
+	if error != OK:
+		LevelRunContext.clear()
+		_status_label.text = "关卡载入失败：%s" % path.get_file()
 
 
 func _on_duplicate_path(path: String) -> void:

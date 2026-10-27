@@ -1,6 +1,7 @@
 extends SceneTree
 
-## 积木校验器：扫描 blocks\* 下每个积木，检查“根节点类型 / 碰撞层 / 脚本 / 命名”。
+## 积木校验器：扫描 blocks\* 下的积木场景，检查“根节点类型 / 碰撞层 / 脚本 / 命名”。
+## 同一目录可以包含多个正式变体场景，例如长、短斜坡共用一份脚本。
 ## 运行：godot --headless --path . --script res://tools/lint_blocks.gd
 ## 退出码：0 = 全部正常，1 = 有错误。
 
@@ -50,13 +51,13 @@ func _initialize() -> void:
 
 func _check_block(folder: String, class_names: Dictionary) -> void:
 	var block_dir := BLOCKS_DIR + "/" + folder
-	var scene_path := block_dir + "/" + folder + ".tscn"
 	var script_path := block_dir + "/" + folder + ".gd"
 
 	if not folder.is_valid_identifier():
 		_warn(folder, "文件夹名不是合法的标识符（建议小写+下划线）")
-	if not ResourceLoader.exists(scene_path):
-		_error(folder, "缺少场景文件：%s/%s.tscn" % [folder, folder])
+	var scene_paths := _find_scene_paths(block_dir, folder)
+	if scene_paths.is_empty():
+		_error(folder, "目录中没有可用的 .tscn 场景")
 		return
 	if not ResourceLoader.exists(script_path):
 		_warn(folder, "缺少同名脚本：%s/%s.gd" % [folder, folder])
@@ -71,18 +72,36 @@ func _check_block(folder: String, class_names: Dictionary) -> void:
 		else:
 			class_names[gname] = folder
 
-	var packed := load(scene_path) as PackedScene
-	if packed == null:
-		_error(folder, "场景加载失败：%s" % scene_path)
-		return
+	for scene_path in scene_paths:
+		var label := folder
+		if scene_paths.size() > 1:
+			label = scene_path.get_file().get_basename()
+		var packed := load(scene_path) as PackedScene
+		if packed == null:
+			_error(label, "场景加载失败：%s" % scene_path)
+			continue
+		var node := packed.instantiate()
+		if node == null:
+			_error(label, "场景实例化失败（可能有脚本报错）")
+			continue
+		_classify(label, node)
+		node.free()
 
-	var node := packed.instantiate()
-	if node == null:
-		_error(folder, "场景实例化失败（可能有脚本报错）")
-		return
 
-	_classify(folder, node)
-	node.free()
+func _find_scene_paths(block_dir: String, folder: String) -> Array[String]:
+	var result: Array[String] = []
+	var primary := block_dir + "/" + folder + ".tscn"
+	if ResourceLoader.exists(primary):
+		result.append(primary)
+		return result
+	var dir := DirAccess.open(block_dir)
+	if dir == null:
+		return result
+	for file_name in dir.get_files():
+		if file_name.ends_with(".tscn"):
+			result.append(block_dir + "/" + file_name)
+	result.sort()
+	return result
 
 
 func _classify(folder: String, node: Node) -> void:

@@ -4,6 +4,7 @@ extends Node
 ## 跑法：tools\dev.bat 40（自动扫描 tests\*.tscn）
 
 var _failed := 0
+var _fixtures: Array[Node] = []
 
 
 func _ready() -> void:
@@ -14,6 +15,10 @@ func _ready() -> void:
 		print("TEST RESULT: PASS")
 	else:
 		print("TEST RESULT: FAIL（%d 项不通过）" % _failed)
+	for fixture in _fixtures:
+		if is_instance_valid(fixture):
+			fixture.free()
+	_fixtures.clear()
 	get_tree().quit(0 if _failed == 0 else 1)
 
 
@@ -21,6 +26,7 @@ func _test_fixed() -> void:
 	print("")
 	print("--- FIXED 模式 ---")
 	var plate := RefractSurface.new()
+	_fixtures.append(plate)
 	plate.mode = RefractSurface.BendMode.FIXED
 	plate.bend_degrees = 20.0
 	plate.attenuation = 0.05
@@ -47,6 +53,7 @@ func _test_snell() -> void:
 	print("")
 	print("--- SNELL 模式 ---")
 	var plate := RefractSurface.new()
+	_fixtures.append(plate)
 	plate.mode = RefractSurface.BendMode.SNELL
 	plate.ior = 1.5
 	plate.attenuation = 0.0

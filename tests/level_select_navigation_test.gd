@@ -59,6 +59,7 @@ func _run() -> void:
 		return
 
 	var manager := get_tree().current_scene.get_node("LevelManager") as LevelManager
+	_check("地图进入关卡携带正式游玩凭证", manager.run_mode == LevelRunContext.Mode.OFFICIAL)
 	manager._set_paused(true)
 	await get_tree().process_frame
 	_check("游戏确实暂停且暂停菜单可见", get_tree().paused

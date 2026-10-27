@@ -1,0 +1,218 @@
+[
+  {
+    "file": "mechanisms/optics/convex_lens.png",
+    "source": "微信图片_20261026215723_148_4.png",
+    "role": "凸透镜",
+    "width": 212,
+    "height": 512,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/optics/concave_lens.png",
+    "source": "微信图片_20261026215723_148_4.png",
+    "role": "凹透镜",
+    "width": 279,
+    "height": 512,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/optics/triangular_prism.png",
+    "source": "微信图片_20261026215723_148_4.png",
+    "role": "三棱镜",
+    "width": 512,
+    "height": 427,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/optics/glass_plate.png",
+    "source": "微信图片_20261026215723_148_4.png",
+    "role": "玻璃板",
+    "width": 164,
+    "height": 512,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/props/mirror_panel.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "镜面板",
+    "width": 168,
+    "height": 358,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/ice/glacier_cluster.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "冰川簇",
+    "width": 331,
+    "height": 348,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/props/stone_a.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "石块 A",
+    "width": 356,
+    "height": 326,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/props/stone_b.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "石块 B",
+    "width": 387,
+    "height": 310,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/props/stone_c.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "石块 C",
+    "width": 318,
+    "height": 356,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/terrain/dark_bar.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "深色长条平台",
+    "width": 405,
+    "height": 100,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/props/mirror_panel_clean.png",
+    "source": "mechanisms/_source/mirror_panel_clean_source.png",
+    "role": "镜面板（透明边缘清理版，推荐）",
+    "width": 220,
+    "height": 512,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/switches/ring_neutral.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "中性圆环",
+    "width": 219,
+    "height": 204,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/switches/ring_cyan.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "青色圆环",
+    "width": 222,
+    "height": 208,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/switches/ring_empty.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "空心圆环",
+    "width": 210,
+    "height": 207,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/switches/ring_orange.png",
+    "source": "微信图片_20261026141344_43_4.png",
+    "role": "橙色圆环",
+    "width": 212,
+    "height": 211,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/switches/disc_orange.png",
+    "source": "微信图片_20261026141344_50_4.png",
+    "role": "橙色圆盘",
+    "width": 512,
+    "height": 508,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/switches/disc_cyan.png",
+    "source": "微信图片_20261026141344_51_4.png",
+    "role": "青色圆盘",
+    "width": 512,
+    "height": 509,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/terrain/prism_wedge.png",
+    "source": "微信图片_20261026141344_53_4.png",
+    "role": "紫色三角坡面",
+    "width": 512,
+    "height": 233,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/terrain/dark_slope_long.png",
+    "source": "微信图片_20261026141344_54_4.png",
+    "role": "深色长斜坡",
+    "width": 512,
+    "height": 171,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/terrain/dark_slope_short.png",
+    "source": "微信图片_20261026141344_55_4.png",
+    "role": "深色短斜坡",
+    "width": 512,
+    "height": 163,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/ice/ice_crystal_tall.png",
+    "source": "微信图片_20261026141344_56_4.png",
+    "role": "高冰晶",
+    "width": 444,
+    "height": 512,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/ice/ice_crystal_wide_a.png",
+    "source": "微信图片_20261026141344_57_4.png",
+    "role": "宽冰晶 A",
+    "width": 512,
+    "height": 282,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/ice/ice_crystal_wide_b.png",
+    "source": "微信图片_20261026141344_58_4.png",
+    "role": "宽冰晶 B",
+    "width": 512,
+    "height": 282,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/ice/ice_crystal_peak.png",
+    "source": "微信图片_20261026141344_59_4.png",
+    "role": "山峰冰晶",
+    "width": 512,
+    "height": 269,
+    "sprite": true
+  },
+  {
+    "file": "mechanisms/textures/dark_stone.png",
+    "source": "微信图片_20261026141344_46_4.png",
+    "role": "深色石材纹理",
+    "width": 512,
+    "height": 512,
+    "sprite": false
+  },
+  {
+    "file": "mechanisms/textures/light_crystal.png",
+    "source": "微信图片_20261026141344_47_4.png",
+    "role": "浅色晶体纹理",
+    "width": 512,
+    "height": 512,
+    "sprite": false
+  },
+  {
+    "file": "mechanisms/textures/light_background.png",
+    "source": "微信图片_20261026141344_49_4.png",
+    "role": "浅色背景纹理",
+    "width": 1024,
+    "height": 576,
+    "sprite": false
+  }
+]

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bilhubxnwaehg"]
+
+[ext_resource type="Script" uid="uid://cxj2hbrndpkdk" path="res://tests/opaque_wall_test.gd" id="1_1jc6y"]
+
+[node name="OpaqueWallTest" type="Node"]
+script = ExtResource("1_1jc6y")

@@ -4,6 +4,7 @@ extends Node
 ## 跑法：tools\dev.bat 40
 
 var _failed := 0
+var _fixtures: Array[Node] = []
 
 
 func _ready() -> void:
@@ -15,6 +16,10 @@ func _ready() -> void:
 		print("TEST RESULT: PASS")
 	else:
 		print("TEST RESULT: FAIL（%d 项不通过）" % _failed)
+	for fixture in _fixtures:
+		if is_instance_valid(fixture):
+			fixture.free()
+	_fixtures.clear()
 	get_tree().quit(0 if _failed == 0 else 1)
 
 
@@ -22,6 +27,7 @@ func _test_focus() -> void:
 	print("")
 	print("--- 聚光：能量变大、光柱变细、方向不变 ---")
 	var lens := ConvexLens.new()
+	_fixtures.append(lens)
 	lens.focus_gain = 1.8
 	lens.beam_narrow = 0.45
 
@@ -42,6 +48,7 @@ func _test_cap() -> void:
 	print("")
 	print("--- 能量上限 ---")
 	var lens := ConvexLens.new()
+	_fixtures.append(lens)
 	lens.focus_gain = 1.8
 	var out := lens.on_ray(Vector2.RIGHT, Vector2.LEFT, Vector2.ZERO, 3.0)
 	_check("能量封顶在 MAX_ENERGY(%.1f)" % RayCaster.MAX_ENERGY,
@@ -53,6 +60,7 @@ func _test_trace_break() -> void:
 	print("")
 	print("--- 光路里：透镜前后是两段，宽度不同 ---")
 	var lens := ConvexLens.new()
+	_fixtures.append(lens)
 	lens.focus_gain = 1.8
 	lens.beam_narrow = 0.45
 	lens.position = Vector2(300, 300)

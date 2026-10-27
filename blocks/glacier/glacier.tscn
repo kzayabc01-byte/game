@@ -1,6 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://blocks/glacier/glacier.gd" id="1_script"]
+[ext_resource type="Script" path="res://assets/materials/mechanism_material_shape_2d.gd" id="2_visual"]
+[ext_resource type="Texture2D" path="res://assets/mechanisms/textures/light_crystal.png" id="3_texture"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ice"]
 size = Vector2(64, 64)
@@ -15,3 +17,26 @@ melt_seconds = 3.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("RectangleShape2D_ice")
+
+[node name="Visual" type="Polygon2D" parent="."]
+z_index = -1
+polygon = PackedVector2Array(-32, -32, 32, -32, 32, 32, -32, 32)
+script = ExtResource("2_visual")
+material_mode = 2
+material_texture = ExtResource("3_texture")
+tile_size_pixels = 220.0
+material_texture_offset = Vector2(0.31, 0.11)
+texture_midpoint = 0.839
+texture_detail_strength = 0.52
+auto_fit_collision_rectangle = true
+base_color = Color(0.76, 0.86, 0.92, 1)
+tint_color = Color(0.38, 0.66, 0.9, 1)
+color_concentration = 0.28
+saturation = 0.72
+brightness = 0.96
+contrast = 0.88
+opacity = 0.72
+emission_color = Color(0.48, 0.72, 0.98, 1)
+emission_strength = 0.025
+edge_highlight_color = Color(0.78, 0.9, 1, 1)
+edge_highlight_strength = 0.22

@@ -1,0 +1,13 @@
+{
+  "args_summary": "add_node(scene_path=res://assets/materials/mechanism_showcase.tscn, node_name=Background, node_type=CanvasLayer)",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000019/files/assets/materials/mechanism_showcase.tscn",
+      "kind": "snapshot",
+      "path": "res://assets/materials/mechanism_showcase.tscn"
+    }
+  ],
+  "id": "000019",
+  "timestamp": 1793089761.0,
+  "tool": "add_node"
+}

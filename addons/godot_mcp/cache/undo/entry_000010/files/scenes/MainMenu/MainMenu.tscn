@@ -1,0 +1,100 @@
+[gd_scene format=3 uid="uid://cwbbg52rw8owx"]
+
+[ext_resource type="Script" uid="uid://b6j22n5ig12aj" path="res://scenes/MainMenu/main_menu.gd" id="1_i21gk"]
+
+[sub_resource type="Theme" id="Theme_bi4nj"]
+
+[sub_resource type="Theme" id="Theme_dbthq"]
+
+[node name="MainMenu" type="Control" unique_id=1992102850]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("Theme_bi4nj")
+script = ExtResource("1_i21gk")
+
+[node name="Background" type="TextureRect" parent="." unique_id=779231151]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Decoration" type="Control" parent="." unique_id=1170339358]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="TitleGroup" type="Control" parent="." unique_id=1878159127]
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Title" type="TextureRect" parent="TitleGroup" unique_id=275085876]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Label" type="Label" parent="TitleGroup" unique_id=24329069]
+layout_mode = 0
+offset_right = 756.0
+offset_bottom = 255.0
+text = "光线游戏"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="MenuGroup" type="Control" parent="." unique_id=631271015]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="StartButton" type="Button" parent="MenuGroup" unique_id=620465022]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 0
+offset_left = 360.0
+offset_top = 324.0
+offset_right = 702.0
+offset_bottom = 396.0
+size_flags_vertical = 3
+theme = SubResource("Theme_dbthq")
+text = "开始游戏"
+
+[node name="SelectButton" type="Button" parent="MenuGroup" unique_id=1969990618]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 0
+offset_left = 360.0
+offset_top = 412.0
+offset_right = 702.0
+offset_bottom = 484.0
+size_flags_vertical = 3
+theme = SubResource("Theme_dbthq")
+text = "选择关卡"
+
+[node name="ExitButton" type="Button" parent="MenuGroup" unique_id=1366189597]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 0
+offset_left = 360.0
+offset_top = 500.0
+offset_right = 702.0
+offset_bottom = 572.0
+size_flags_vertical = 3
+theme = SubResource("Theme_dbthq")
+text = "退出游戏"
+
+[node name="WorkshopButton" type="Button" parent="." unique_id=1658440355]
+custom_minimum_size = Vector2(320, 72)
+layout_mode = 0
+offset_left = 739.0
+offset_top = 136.0
+offset_right = 1059.0
+offset_bottom = 208.0
+size_flags_vertical = 3
+theme = SubResource("Theme_dbthq")
+text = "关卡工坊"

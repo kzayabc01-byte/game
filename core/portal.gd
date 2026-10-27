@@ -43,6 +43,15 @@ var linked_portal: Portal
 @export var length: float = 96.0
 ## 法线方向厚度：给“擦着门边飞过”的光留一点容错
 @export var thickness: float = 16.0
+@export_category("视觉 / Visual")
+@export_range(0.0, 1.0, 0.01) var color_concentration: float = 0.9:
+	set(value):
+		color_concentration = value
+		queue_redraw()
+@export_range(0.0, 2.0, 0.01) var glow_strength: float = 0.9:
+	set(value):
+		glow_strength = value
+		queue_redraw()
 
 var _warned_unlinked: bool = false
 
@@ -237,7 +246,7 @@ func get_pair_index() -> int:
 	return 0
 
 
-## 配对颜色：同一对门同色；未配对固定红色（红色只用来表示“没配对”）
+## 配对颜色：同一对门同色；未配对使用素材色板里的橙色警告。
 const PAIR_COLORS: Array[Color] = [
 	Color(0.45, 0.85, 1.00),  # 天蓝
 	Color(0.55, 0.95, 0.55),  # 绿
@@ -250,9 +259,12 @@ const PAIR_COLORS: Array[Color] = [
 
 func get_pair_color() -> Color:
 	if not is_linked():
-		return Color(0.95, 0.30, 0.35, 0.95)
+		return MechanismPalette.concentrate(
+			MechanismPalette.MUTED_SURFACE, MechanismPalette.ORANGE_GLOW, color_concentration)
 	var index := maxi(get_pair_index() - 1, 0)
-	return PAIR_COLORS[index % PAIR_COLORS.size()]
+	return MechanismPalette.concentrate(
+		MechanismPalette.MUTED_SURFACE,
+		PAIR_COLORS[index % PAIR_COLORS.size()], color_concentration)
 
 
 func _pair_key() -> String:
@@ -285,7 +297,8 @@ func _draw() -> void:
 	var linked := is_linked()
 
 	# 门面：一条长线 + 外发光，长度 = length（整条都能传送）
-	draw_line(Vector2(0.0, -half_len), Vector2(0.0, half_len), Color(color, 0.28), 12.0)
+	draw_line(Vector2(0.0, -half_len), Vector2(0.0, half_len),
+			Color(color, 0.16 + glow_strength * 0.2), 12.0)
 	draw_line(Vector2(0.0, -half_len), Vector2(0.0, half_len), color, 5.0)
 	draw_line(Vector2(0.0, -half_len), Vector2(0.0, half_len), Color(1, 1, 1, 0.45), 1.5)
 

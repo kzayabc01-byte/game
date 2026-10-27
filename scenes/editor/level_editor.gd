@@ -9,20 +9,17 @@ extends Control
 ##     视觉层（WireLayer）只属于编辑器场景，游戏里没有它 → 电线天然不可见
 ##   * 三元模型：开关（触发/压力感应）→ 电线（移多少/转多少/时长/循环/恢复）
 ##     → 任意可动作积木（镜面、墙体等，目标本身不负责感知）
-##   * 六步加载管线：捕获干净属性 → 中和（process DISABLED + 关相机）→ 进树 →
-##     编辑器相机 → deferred 清理（LevelManager UI / 蚕茧连接）→ 回写属性
+##   * 挂载前声明创作上下文；不创建玩家控制器、不接入正式结算。
 ##   * 撤销/重做 = 序列化快照 → user:// 临时文件重载换子树（50 步）
 ##   * 关卡边界固定 1152×648；编辑相机可缩放 / 平移，但不会写入关卡
-##   * 实时验证会运行光线、重力和机关，退出时恢复进入前快照
-##   * 试玩留在编辑器，允许修改已有积木/电线，退出时只保留主动编辑
+##   * 验证留在编辑器，允许修改已有积木/电线，退出时只保留主动编辑
 ##
 ## 快捷键：箭头 微移（Shift=32px）· Q/E 旋转 ±15°（Shift=1°）· Del 删除
 ##          滚轮缩放 · 中键/右键拖动画布 · Ctrl+D 复制 · Ctrl+Z/Y 撤销重做
-##          Ctrl+S/O/N · Esc 取消当前操作/退出试玩或验证
+##          Ctrl+S/O/N · Esc 取消当前操作/退出验证
 
 const LEVELS_DIR := "res://scenes/levels"
 const BASE_SCENE := "res://scenes/levels/level_base.tscn"
-const ACTION_LINK_SCENE := "res://blocks/action_link/action_link.tscn"
 const MENU_SCENE := "res://scenes/LevelSelectPage/LevelSelectPage.tscn"
 const UNDO_LIMIT := 50
 const GRID_SIZE := 32.0
@@ -63,13 +60,10 @@ var _pan_button: MouseButton = MOUSE_BUTTON_NONE
 var _validation_mode := false
 var _validation_snapshot: Dictionary = {}
 var _validation_dirty := false
-var _playtest_mode := false
-var _playtest_snapshot: Dictionary = {}
-var _playtest_dirty := false
-var _playtest_edits: Dictionary = {}
-var _playtest_initial_transforms: Dictionary = {}
+var _validation_edits: Dictionary = {}
+var _validation_initial_transforms: Dictionary = {}
 var _gizmo_start_transform: Dictionary = {}
-var _playtest_aim_source: LightSource = null
+var _validation_aim_source: LightSource = null
 var _coverage_lit_start := 0.0
 var _coverage_lit_end := 360.0
 var _preview_source: Node2D = null
@@ -80,8 +74,7 @@ var _status_label: Label = null
 var _zoom_label: Label = null
 var _palette_panel: PanelContainer = null
 var _inspector_panel: PanelContainer = null
-var _validation_toggle: CheckButton = null
-var _play_button: Button = null
+var _validation_button: Button = null
 var _coverage_toggle: CheckButton = null
 var _coverage_config_button: Button = null
 var _coverage_dialog: ConfirmationDialog = null
@@ -129,7 +122,7 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and _view_panning:
 		_end_view_pan()
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
-		_playtest_aim_source = null
+		_validation_aim_source = null
 
 
 # ============================================================
@@ -138,7 +131,7 @@ func _notification(what: int) -> void:
 
 ## 新建空白关卡（有未保存改动时弹确认框）
 func new_level() -> void:
-	if _playtest_mode:
+	if _validation_mode:
 		return
 	if not _dirty:
 		_do_new_level()
@@ -148,7 +141,7 @@ func new_level() -> void:
 
 ## 打开关卡文件（有未保存改动时弹确认框，确认后才真的打开）
 func open_level(path: String) -> bool:
-	if _playtest_mode:
+	if _validation_mode:
 		return false
 	var packed := load(path) as PackedScene
 	if packed == null:
@@ -162,7 +155,7 @@ func open_level(path: String) -> bool:
 
 ## 保存到当前路径；新关卡弹另存为对话框
 func save() -> bool:
-	if _playtest_mode:
+	if _validation_mode:
 		return false
 	if _current_path.is_empty():
 		save_as()
@@ -172,7 +165,7 @@ func save() -> bool:
 
 ## 弹出另存为对话框（文件名 / 关卡名 / 下一关）
 func save_as() -> void:
-	if _level_root == null or _playtest_mode:
+	if _level_root == null or _validation_mode:
 		return
 	_save_name_edit.text = LevelFileIO.suggest_file_name()
 	var manager := _level_root.get_node_or_null("LevelManager")
@@ -186,7 +179,7 @@ func spawn_block(
 	scene_path: String, world_position: Vector2,
 	block_name: String = "", preset: Dictionary = {}, entry_key: String = "",
 ) -> Node2D:
-	if _level_root == null or _playtest_mode:
+	if _level_root == null or _validation_mode:
 		return null
 	_push_undo()
 	var block := _spawn_block_impl(scene_path, world_position, preset, entry_key)
@@ -232,7 +225,7 @@ func select_wire(index: int) -> void:
 
 
 func delete_selected() -> void:
-	if _selection == null or _playtest_mode:
+	if _selection == null or _validation_mode:
 		return
 	_push_undo()
 	var node := _selection
@@ -252,7 +245,7 @@ func delete_selected() -> void:
 
 
 func duplicate_selected() -> void:
-	if _selection == null or _playtest_mode or _selection.scene_file_path.is_empty():
+	if _selection == null or _validation_mode or _selection.scene_file_path.is_empty():
 		return
 	# 传送门复制 = 复制“一对”：只复制一扇会让副本指回原来的另一半
 	if _selection is Portal:
@@ -276,9 +269,9 @@ func nudge_selected(delta: Vector2, push_undo := true) -> void:
 	if push_undo:
 		_push_undo()
 	_selection.position += delta
-	if _playtest_mode:
-		var authored_position: Vector2 = _playtest_authored_transform(_selection, &"position")
-		_record_playtest_property(_selection, &"position", authored_position + delta)
+	if _validation_mode:
+		var authored_position: Vector2 = _validation_authored_transform(_selection, &"position")
+		_record_validation_property(_selection, &"position", authored_position + delta)
 	_refresh_inspector_transform()
 	_on_selected_transform_changed()
 
@@ -289,9 +282,9 @@ func rotate_selected(degrees: float, push_undo := true) -> void:
 	if push_undo:
 		_push_undo()
 	_selection.rotation += deg_to_rad(degrees)
-	if _playtest_mode:
-		var authored_rotation: float = _playtest_authored_transform(_selection, &"rotation")
-		_record_playtest_property(_selection, &"rotation", authored_rotation + deg_to_rad(degrees))
+	if _validation_mode:
+		var authored_rotation: float = _validation_authored_transform(_selection, &"rotation")
+		_record_validation_property(_selection, &"rotation", authored_rotation + deg_to_rad(degrees))
 	_refresh_inspector_transform()
 	_on_selected_transform_changed()
 
@@ -305,9 +298,9 @@ func scale_selected(factor: Vector2, push_undo := true) -> void:
 		maxf(_selection.scale.x * factor.x, SelectionGizmo.MIN_SCALE),
 		maxf(_selection.scale.y * factor.y, SelectionGizmo.MIN_SCALE)
 	)
-	if _playtest_mode:
-		var authored_scale: Vector2 = _playtest_authored_transform(_selection, &"scale")
-		_record_playtest_property(_selection, &"scale", Vector2(
+	if _validation_mode:
+		var authored_scale: Vector2 = _validation_authored_transform(_selection, &"scale")
+		_record_validation_property(_selection, &"scale", Vector2(
 			maxf(authored_scale.x * factor.x, SelectionGizmo.MIN_SCALE),
 			maxf(authored_scale.y * factor.y, SelectionGizmo.MIN_SCALE),
 		))
@@ -322,7 +315,7 @@ func set_selected_property(prop_name: StringName, value: Variant, push_undo := t
 	if push_undo:
 		_push_undo()
 	_selection.set(prop_name, value)
-	_record_playtest_property(_selection, prop_name, value)
+	_record_validation_property(_selection, prop_name, value)
 	_selection.queue_redraw()
 	# 传送门：编号要同步给配对的那扇门，否则玩家会看到两个不一样的号
 	if _selection is Portal:
@@ -331,7 +324,7 @@ func set_selected_property(prop_name: StringName, value: Variant, push_undo := t
 			var partner := portal.linked_portal
 			if partner != null and is_instance_valid(partner):
 				partner.pair_id = value
-				_record_playtest_property(partner, &"pair_id", value)
+				_record_validation_property(partner, &"pair_id", value)
 				partner.queue_redraw()
 		elif prop_name == &"length" or prop_name == &"thickness":
 			portal.apply_shape()
@@ -346,27 +339,23 @@ func connect_wire(
 	source: Node2D, target: Node2D,
 	signal_name: StringName = &"", method_name: StringName = &"",
 ) -> bool:
-	if _playtest_mode:
+	if _validation_mode:
 		return false
-	if source == null or target == null or source == target:
+	if not WireService.connection_error(_blocks_container(), source, target).is_empty():
 		return false
 	if signal_name == &"":
 		signal_name = _source_signal_of(source)
-	if signal_name == &"" or not _is_valid_wire_target(target, signal_name):
+	if signal_name != WireService.source_signal(source) or not _is_valid_wire_target(target, signal_name):
 		return false
 	# 一个机关只能接一条电线：两条电线会各自 tween 同一目标，互相抢位置
 	if _has_wire_to_target(target):
 		return false
 	_push_undo()
-	var link := _spawn_link_for(target)
+	var link: ActionLink = WireService.create_wire(_blocks_container(), source, target)
 	if link == null:
 		return false
-	if source.connect(signal_name, Callable(link, ActionLink.METHOD_NAME)) != OK:
-		link.queue_free()
-		return false
 	if not _wire_layer.add_wire(link, source, signal_name):
-		source.disconnect(signal_name, Callable(link, ActionLink.METHOD_NAME))
-		link.queue_free()
+		WireService.remove_wire(link)
 		return false
 	_rebuild_inspector()
 	_update_status()
@@ -374,7 +363,7 @@ func connect_wire(
 
 
 func undo() -> bool:
-	if _playtest_mode or _undo_stack.is_empty():
+	if _validation_mode or _undo_stack.is_empty():
 		return false
 	_redo_stack.append(_capture_state())
 	var previous: Dictionary = _undo_stack.pop_back()
@@ -385,7 +374,7 @@ func undo() -> bool:
 
 
 func redo() -> bool:
-	if _playtest_mode or _redo_stack.is_empty():
+	if _validation_mode or _redo_stack.is_empty():
 		return false
 	_undo_stack.append(_capture_state())
 	var next: Dictionary = _redo_stack.pop_back()
@@ -468,10 +457,6 @@ func is_validation_mode() -> bool:
 	return _validation_mode
 
 
-func is_playtest_mode() -> bool:
-	return _playtest_mode
-
-
 ## 测试光区以世界正右为 0°；只能在开启覆盖前设置。
 func set_full_coverage_light_range(start_degrees: float, end_degrees: float) -> bool:
 	if _coverage_toggle != null and _coverage_toggle.button_pressed:
@@ -485,23 +470,12 @@ func set_full_coverage_light_range(start_degrees: float, end_degrees: float) -> 
 	return true
 
 
-## 试玩期间可编辑现有节点；结束时只保留主动修改的属性，不保存物理/动画位移。
-func set_playtest_mode(active: bool) -> bool:
-	if _level_root == null or (active and _validation_mode):
-		return false
-	if active == _playtest_mode:
-		return true
-	if active:
-		_enter_playtest_mode()
-	else:
-		_exit_playtest_mode()
-	return _playtest_mode == active
-
-
-## 在编辑器内运行真实光线、重力与机关；退出后恢复进入前的关卡快照。
+## 验证期间可编辑现有节点；结束时只保留主动修改的属性，不保存物理/动画位移。
 func set_validation_mode(active: bool) -> bool:
-	if active == _validation_mode or _level_root == null or (active and _playtest_mode):
-		return active == _validation_mode
+	if _level_root == null:
+		return false
+	if active == _validation_mode:
+		return true
 	if active:
 		_enter_validation_mode()
 	else:
@@ -544,7 +518,7 @@ func _process(delta: float) -> void:
 		_nudge_timeout -= delta
 		if _nudge_timeout <= 0.0:
 			_nudge_undo_open = false
-	if _validation_mode or _playtest_mode or _level_root == null or not _show_ray_preview:
+	if _validation_mode or _level_root == null or not _show_ray_preview:
 		return
 	_refresh_ray_preview()
 
@@ -552,30 +526,13 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _level_root == null:
 		return
-	if _validation_mode:
-		if (
-			event is InputEventKey and event.pressed and not event.echo
-			and event.keycode == KEY_SPACE
-		):
-			var validation_light := _level_root.get_node_or_null("LightSystem") as LightSystem
-			if validation_light != null:
-				validation_light.request_fire()
-			get_viewport().set_input_as_handled()
-			return
-		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-			set_validation_mode(false)
-			get_viewport().set_input_as_handled()
-			return
-		if _handle_view_input(event):
-			get_viewport().set_input_as_handled()
-		return
-	if (_playtest_mode and event is InputEventKey and event.pressed
+	if (_validation_mode and event is InputEventKey and event.pressed
 			and event.keycode == KEY_ESCAPE):
-		set_playtest_mode(false)
+		set_validation_mode(false)
 		get_viewport().set_input_as_handled()
 		return
 	if (
-		_playtest_mode and event is InputEventKey and event.pressed
+		_validation_mode and event is InputEventKey and event.pressed
 		and not event.echo and event.keycode == KEY_SPACE and not _ui_has_focus()
 	):
 		var test_light := _level_root.get_node_or_null("LightSystem") as LightSystem
@@ -610,7 +567,7 @@ func _handle_key(event: InputEventKey) -> bool:
 	# 焦点守卫：属性面板等控件持焦点时，其余快捷键全部让位
 	if _ui_has_focus():
 		return false
-	if _playtest_mode and event.keycode not in [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_Q, KEY_E]:
+	if _validation_mode and event.keycode not in [KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_Q, KEY_E]:
 		return false
 	match event.keycode:
 		KEY_LEFT:
@@ -775,7 +732,7 @@ func _press_world(screen_pos: Vector2) -> void:
 	if focus != null:
 		focus.release_focus()
 	# 1) 选中块是触发源且点在端口上 → 开始拖电线
-	if not _playtest_mode and _selection != null and _source_signal_of(_selection) != &"":
+	if not _validation_mode and _selection != null and _source_signal_of(_selection) != &"":
 		var port := WireLayer.port_position(_selection, true)
 		if world_point.distance_to(port) <= 12.0:
 			_wire_dragging = true
@@ -783,14 +740,14 @@ func _press_world(screen_pos: Vector2) -> void:
 			_wire_drag_signal = _source_signal_of(_selection)
 			_wire_layer.set_preview(true, port, world_point)
 			return
-	# 试玩时在光源中心拖动是瞄准；按住 Shift 才走编辑器的移动手柄。
+	# 验证时在光源中心拖动是瞄准；按住 Shift 才走编辑器的移动手柄。
 	if (
-			_playtest_mode
+			_validation_mode
 			and _selection is LightSource
 			and not Input.is_physical_key_pressed(KEY_SHIFT)
 			and world_point.distance_to(_selection.global_position) <= LightSource.GRAB_RADIUS
 	):
-		_playtest_aim_source = _selection as LightSource
+		_validation_aim_source = _selection as LightSource
 		return
 	# 2) 变换手柄
 	if _selection != null:
@@ -802,11 +759,11 @@ func _press_world(screen_pos: Vector2) -> void:
 	var block := _block_at_point(world_point)
 	if block != null:
 		select(block)
-		if _playtest_mode and block is LightSource:
+		if _validation_mode and block is LightSource:
 			if Input.is_physical_key_pressed(KEY_SHIFT):
 				_gizmo.begin_drag(SelectionGizmo.DragMode.MOVE, world_point)
 			else:
-				_playtest_aim_source = block as LightSource
+				_validation_aim_source = block as LightSource
 		return
 	# 4) 电线
 	var wire_index := _wire_layer.hit_test(world_point)
@@ -818,8 +775,8 @@ func _press_world(screen_pos: Vector2) -> void:
 
 
 func _release_world(screen_pos: Vector2) -> void:
-	if _playtest_aim_source != null:
-		_playtest_aim_source = null
+	if _validation_aim_source != null:
+		_validation_aim_source = null
 		return
 	var world_point := _to_world(screen_pos)
 	if _wire_dragging:
@@ -836,11 +793,11 @@ func _release_world(screen_pos: Vector2) -> void:
 
 func _handle_mouse_motion(screen_pos: Vector2) -> void:
 	var world_point := _to_world(screen_pos)
-	if _playtest_aim_source != null:
+	if _validation_aim_source != null:
 		if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-			_playtest_aim_source = null
+			_validation_aim_source = null
 			return
-		_aim_playtest_source_at(world_point)
+		_aim_validation_source_at(world_point)
 		return
 	if _wire_dragging:
 		_wire_layer.set_preview(true, WireLayer.port_position(_wire_drag_source, true), world_point)
@@ -853,27 +810,28 @@ func _handle_mouse_motion(screen_pos: Vector2) -> void:
 			_wire_layer.set_highlight_target(null)
 	elif _gizmo.is_dragging():
 		_gizmo.update_drag(world_point)
-	elif _playtest_mode:
-		_playtest_aim_source = _selection as LightSource
-		if _playtest_aim_source == null:
+	elif _validation_mode:
+		_validation_aim_source = _selection as LightSource
+		if _validation_aim_source == null:
 			var sources := _level_root.get_tree().get_nodes_in_group(LightSource.SOURCE_GROUP)
 			if not sources.is_empty():
-				_playtest_aim_source = sources[0] as LightSource
-		_aim_playtest_source_at(world_point)
-		_playtest_aim_source = null
+				_validation_aim_source = sources[0] as LightSource
+		_aim_validation_source_at(world_point, false)
+		_validation_aim_source = null
 
 
-func _aim_playtest_source_at(world_point: Vector2) -> void:
-	if not _playtest_mode or not is_instance_valid(_playtest_aim_source):
+func _aim_validation_source_at(world_point: Vector2, record_edit: bool = true) -> void:
+	if not _validation_mode or not is_instance_valid(_validation_aim_source):
 		return
-	if world_point.distance_squared_to(_playtest_aim_source.global_position) < 0.01:
+	if world_point.distance_squared_to(_validation_aim_source.global_position) < 0.01:
 		return
-	var previous_rotation := _playtest_aim_source.rotation
-	_playtest_aim_source.look_at(world_point)
-	if is_equal_approx(_playtest_aim_source.rotation, previous_rotation):
+	var previous_rotation := _validation_aim_source.rotation
+	_validation_aim_source.look_at(world_point)
+	if is_equal_approx(_validation_aim_source.rotation, previous_rotation):
 		return
-	_record_playtest_property(_playtest_aim_source, &"rotation", _playtest_aim_source.rotation)
-	_playtest_aim_source.direction_changed.emit(_playtest_aim_source.rotation)
+	if record_edit:
+		_record_validation_property(_validation_aim_source, &"rotation", _validation_aim_source.rotation)
+	_validation_aim_source.direction_changed.emit(_validation_aim_source.rotation)
 	_refresh_inspector_transform()
 	_on_selected_transform_changed()
 
@@ -898,11 +856,10 @@ func _mount_level(instance: Node) -> void:
 	if level_camera != null:
 		level_camera.enabled = false
 	var previous := _level_root
-	_level_holder.add_child(instance)
 	var manager := instance.get_node_or_null("LevelManager") as LevelManager
 	if manager != null:
-		manager.set_process_input(false)
-		manager.set_process_unhandled_input(false)
+		manager.run_mode = LevelRunContext.Mode.AUTHORING
+	_level_holder.add_child(instance)
 	# 回写干净属性表，抵消 _ready 副作用（传送门自动配对）
 	LevelFileIO.restore_props(instance, clean_props)
 	_level_root = instance
@@ -910,28 +867,9 @@ func _mount_level(instance: Node) -> void:
 	_editor_camera.make_current()
 	_wire_layer.clear()
 	_wire_layer.rebuild_from_level(instance)
-	_cleanup_level.call_deferred(instance.get_instance_id())
 	if previous != null:
 		previous.free()
 	_update_status()
-
-
-## deferred：释放游戏内 UI（胜利标签/提示条），断开蚕茧→胜利流程的连接
-func _cleanup_level(instance_id: int) -> void:
-	var instance := instance_from_id(instance_id) as Node
-	if instance == null:
-		return
-	var manager := instance.get_node_or_null("LevelManager")
-	if manager == null:
-		return
-	for child in manager.get_children():
-		if child is CanvasLayer:
-			child.free()
-	for node in get_tree().get_nodes_in_group(Cocoon.COCOON_GROUP):
-		var cocoon := node as Cocoon
-		var callback := Callable(manager, "_on_cocoon_activated")
-		if cocoon != null and cocoon.activated.is_connected(callback):
-			cocoon.activated.disconnect(callback)
 
 
 func _do_new_level() -> void:
@@ -966,7 +904,7 @@ func _capture_state() -> Dictionary:
 
 
 func _push_undo() -> void:
-	if _level_root == null or _playtest_mode:
+	if _level_root == null or _validation_mode:
 		return
 	_undo_stack.append(_capture_state())
 	if _undo_stack.size() > UNDO_LIMIT:
@@ -975,39 +913,39 @@ func _push_undo() -> void:
 	_dirty = true
 
 
-func _record_playtest_property(node: Node, prop_name: StringName, value: Variant) -> void:
-	if not _playtest_mode or not is_instance_valid(node):
+func _record_validation_property(node: Node, prop_name: StringName, value: Variant) -> void:
+	if not _validation_mode or not is_instance_valid(node):
 		return
-	if _playtest_edits.is_empty():
-		_undo_stack.append(_playtest_snapshot)
+	if _validation_edits.is_empty():
+		_undo_stack.append(_validation_snapshot)
 		if _undo_stack.size() > UNDO_LIMIT:
 			_undo_stack.pop_front()
 		_redo_stack.clear()
 	var path := str(_level_root.get_path_to(node))
-	var props: Dictionary = _playtest_edits.get(path, {})
+	var props: Dictionary = _validation_edits.get(path, {})
 	props[String(prop_name)] = value
-	_playtest_edits[path] = props
+	_validation_edits[path] = props
 	_dirty = true
 
 
-func _playtest_authored_transform(node: Node2D, prop_name: StringName) -> Variant:
+func _validation_authored_transform(node: Node2D, prop_name: StringName) -> Variant:
 	var path := str(_level_root.get_path_to(node))
-	var edits: Dictionary = _playtest_edits.get(path, {})
+	var edits: Dictionary = _validation_edits.get(path, {})
 	if edits.has(String(prop_name)):
 		return edits[String(prop_name)]
-	var initial: Dictionary = _playtest_initial_transforms.get(path, {})
+	var initial: Dictionary = _validation_initial_transforms.get(path, {})
 	return initial.get(String(prop_name), node.get(prop_name))
 
 
-func _record_playtest_component(node: Node2D, prop_name: StringName, axis: int, value: float) -> void:
-	if not _playtest_mode:
+func _record_validation_component(node: Node2D, prop_name: StringName, axis: int, value: float) -> void:
+	if not _validation_mode:
 		return
-	var authored: Vector2 = _playtest_authored_transform(node, prop_name)
+	var authored: Vector2 = _validation_authored_transform(node, prop_name)
 	if axis == 0:
 		authored.x = value
 	else:
 		authored.y = value
-	_record_playtest_property(node, prop_name, authored)
+	_record_validation_property(node, prop_name, authored)
 
 
 func _restore_state(state: Dictionary) -> void:
@@ -1022,28 +960,28 @@ func _restore_state(state: Dictionary) -> void:
 
 
 # ============================================================
-# 试玩 / 实时验证
+# 统一的编辑器验证
 # ============================================================
 
-func _enter_playtest_mode() -> void:
+func _enter_validation_mode() -> void:
 	_cancel_wire_drag()
 	_end_view_pan()
-	_playtest_aim_source = null
+	_validation_aim_source = null
 	_restore_wire_previews()
-	_playtest_snapshot = _capture_state()
-	_playtest_dirty = _dirty
-	_playtest_edits.clear()
-	_playtest_initial_transforms.clear()
+	_validation_snapshot = _capture_state()
+	_validation_dirty = _dirty
+	_validation_edits.clear()
+	_validation_initial_transforms.clear()
 	for block in LevelFileIO.walk_instance_roots(_level_root):
 		var node := block as Node2D
 		if node == null:
 			continue
-		_playtest_initial_transforms[str(_level_root.get_path_to(node))] = {
+		_validation_initial_transforms[str(_level_root.get_path_to(node))] = {
 			"position": node.position,
 			"rotation": node.rotation,
 			"scale": node.scale,
 		}
-	_playtest_mode = true
+	_validation_mode = true
 	_level_root.process_mode = Node.PROCESS_MODE_INHERIT
 	var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
 	if light_system != null:
@@ -1051,19 +989,19 @@ func _enter_playtest_mode() -> void:
 	var manager := _level_root.get_node_or_null("LevelManager")
 	if manager != null:
 		manager.process_mode = Node.PROCESS_MODE_DISABLED
-	# 游戏态的拖拽/方向快捷键会与编辑手柄冲突；试玩期间统一交给编辑器。
+	# 游戏态的拖拽/方向快捷键会与编辑手柄冲突；验证期间统一交给编辑器。
 	for block in LevelFileIO.walk_instance_roots(_level_root):
 		if block is LightSource:
 			block.set_process(false)
 		if block is LightSource or block is StoneBlock:
 			block.set_process_unhandled_input(false)
-	_apply_playtest_ui(true)
+	_apply_validation_ui(true)
 	_rebuild_inspector()
 	_update_status()
 
 
-func _exit_playtest_mode() -> void:
-	_playtest_aim_source = null
+func _exit_validation_mode() -> void:
+	_validation_aim_source = null
 	var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
 	if light_system != null:
 		light_system.reset_state()
@@ -1071,13 +1009,13 @@ func _exit_playtest_mode() -> void:
 	if _selection != null and is_instance_valid(_selection):
 		selected_path = str(_level_root.get_path_to(_selection))
 	_level_root.process_mode = Node.PROCESS_MODE_DISABLED
-	_playtest_mode = false
-	_apply_playtest_ui(false)
-	var snapshot := _playtest_snapshot
-	var edits := _playtest_edits.duplicate(true)
-	_playtest_snapshot = {}
-	_playtest_edits.clear()
-	_playtest_initial_transforms.clear()
+	_validation_mode = false
+	_apply_validation_ui(false)
+	var snapshot := _validation_snapshot
+	var edits := _validation_edits.duplicate(true)
+	_validation_snapshot = {}
+	_validation_edits.clear()
+	_validation_initial_transforms.clear()
 	_restore_state(snapshot)
 	for path in edits:
 		var node := _level_root.get_node_or_null(NodePath(path))
@@ -1094,7 +1032,7 @@ func _exit_playtest_mode() -> void:
 		var link := wire["link"] as ActionLink
 		if link != null:
 			link.sync_origin_from_target()
-	_dirty = _playtest_dirty or not edits.is_empty()
+	_dirty = _validation_dirty or not edits.is_empty()
 	if not selected_path.is_empty():
 		var selected := _level_root.get_node_or_null(NodePath(selected_path)) as Node2D
 		if selected != null:
@@ -1103,7 +1041,7 @@ func _exit_playtest_mode() -> void:
 	_update_status()
 
 
-func _apply_playtest_ui(active: bool) -> void:
+func _apply_validation_ui(active: bool) -> void:
 	_ray_renderer.visible = not active
 	_wire_layer.visible = true
 	_gizmo.visible = true
@@ -1113,70 +1051,14 @@ func _apply_playtest_ui(active: bool) -> void:
 		_inspector_panel.visible = true
 	for control in _toolbar_edit_controls:
 		if is_instance_valid(control):
-			control.disabled = active and control != _play_button
-	if _play_button != null:
-		_play_button.text = "结束试玩" if active else "试玩"
-	if _validation_toggle != null:
-		_validation_toggle.disabled = active
-	_sync_coverage_ui()
-
-
-func _enter_validation_mode() -> void:
-	_validation_snapshot = _capture_state()
-	_validation_dirty = _dirty
-	_cancel_wire_drag()
-	_end_view_pan()
-	clear_selection()
-	_validation_mode = true
-	_level_root.process_mode = Node.PROCESS_MODE_INHERIT
-	var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
-	if light_system != null:
-		# 挂载新关卡时旧子树可能尚未释放，验证前重扫可去掉失效的组成员引用。
-		light_system.call(&"_refresh_nodes")
-	# 关卡管理器会接管 Esc / R 与过关跳转；验证模式只运行物理、光线和机关。
-	var manager := _level_root.get_node_or_null("LevelManager")
-	if manager != null:
-		manager.process_mode = Node.PROCESS_MODE_DISABLED
-	_apply_validation_ui(true)
-	_update_status()
-
-
-func _exit_validation_mode() -> void:
-	if _level_root != null:
-		var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
-		if light_system != null:
-			light_system.reset_state()
-		_level_root.process_mode = Node.PROCESS_MODE_DISABLED
-	_validation_mode = false
-	_apply_validation_ui(false)
-	if not _validation_snapshot.is_empty():
-		var snapshot := _validation_snapshot
-		_validation_snapshot = {}
-		_restore_state(snapshot)
-	_dirty = _validation_dirty
-	_refresh_ray_preview()
-	_update_status()
-
-
-func _apply_validation_ui(active: bool) -> void:
-	_ray_renderer.visible = not active
-	_wire_layer.visible = not active
-	_gizmo.visible = not active
-	if _palette_panel != null:
-		_palette_panel.visible = not active
-	if _inspector_panel != null:
-		_inspector_panel.visible = not active
-	for control in _toolbar_edit_controls:
-		if is_instance_valid(control):
-			control.disabled = active
-	if _validation_toggle != null:
-		_validation_toggle.set_pressed_no_signal(active)
-		_validation_toggle.text = "结束验证" if active else "实时验证"
+			control.disabled = active and control != _validation_button
+	if _validation_button != null:
+		_validation_button.text = "结束验证" if active else "验证"
 	_sync_coverage_ui()
 
 
 func _sync_coverage_ui() -> void:
-	var test_active := _playtest_mode or _validation_mode
+	var test_active := _validation_mode
 	if not test_active and _coverage_toggle != null:
 		_coverage_toggle.set_pressed_no_signal(false)
 		var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
@@ -1191,7 +1073,7 @@ func _sync_coverage_ui() -> void:
 
 
 func _on_coverage_toggled(enabled: bool) -> void:
-	if not (_playtest_mode or _validation_mode):
+	if not (_validation_mode):
 		_coverage_toggle.set_pressed_no_signal(false)
 		return
 	var light_system := _level_root.get_node_or_null("LightSystem") as LightSystem
@@ -1215,7 +1097,7 @@ func _set_source_preview_visual(source: Node2D, active: bool) -> void:
 
 
 # ============================================================
-# 保存 / 试玩
+# 保存 / 验证
 # ============================================================
 
 func _write_current() -> bool:
@@ -1314,17 +1196,14 @@ func _build_toolbar() -> void:
 	var open_button := _make_button("打开", func() -> void: _open_dialog.popup_centered())
 	var save_button := _make_button("保存", func() -> void: save())
 	var save_as_button := _make_button("另存为", func() -> void: save_as())
-	_play_button = _make_button("试玩", _on_play_pressed)
-	_play_button.tooltip_text = "在编辑器内运行关卡；可调整已有积木和电线，结束后保留调整。"
-	for button in [new_button, open_button, save_button, save_as_button, _play_button]:
+	_validation_button = _make_button("验证", _on_validation_pressed)
+	_validation_button.tooltip_text = "在编辑器内运行关卡；可调整已有积木和电线，结束后保留调整。"
+	for button in [new_button, open_button, save_button, save_as_button, _validation_button]:
 		box.add_child(button)
 		_toolbar_edit_controls.append(button)
-	_validation_toggle = CheckButton.new()
-	_validation_toggle.text = "实时验证"
-	_validation_toggle.tooltip_text = "运行光线、重力与机关；结束后恢复进入验证前的设计。"
-	_validation_toggle.toggled.connect(func(active: bool) -> void:
-		set_validation_mode(active))
-	box.add_child(_validation_toggle)
+	var check_button: Button = _make_button("检查关卡", _show_level_validation)
+	box.add_child(check_button)
+	_toolbar_edit_controls.append(check_button)
 	box.add_child(VSeparator.new())
 	var grid_toggle := CheckButton.new()
 	grid_toggle.text = "网格吸附"
@@ -1377,12 +1256,12 @@ func _build_toolbar() -> void:
 	coverage_row.add_child(_coverage_config_button)
 	_coverage_toggle = CheckButton.new()
 	_coverage_toggle.text = "全光线覆盖"
-	_coverage_toggle.tooltip_text = "仅试玩/实时验证可用；只在有光区域内每 2° 发射一束。"
+	_coverage_toggle.tooltip_text = "仅编辑器验证可用；只在有光区域内每 2° 发射一束。"
 	_coverage_toggle.disabled = true
 	_coverage_toggle.toggled.connect(_on_coverage_toggled)
 	coverage_row.add_child(_coverage_toggle)
 	var coverage_hint := Label.new()
-	coverage_hint.text = "先调有光区域，再在试玩或实时验证中开启；不写入关卡。"
+	coverage_hint.text = "先调有光区域，再在验证中开启；不写入关卡。"
 	coverage_row.add_child(coverage_hint)
 	_update_zoom_label()
 
@@ -1489,6 +1368,18 @@ func _build_level_settings_dialog() -> void:
 		bounds_row.add_child(spin)
 		_build_bounds_spins.append(spin)
 	_level_settings_dialog.confirmed.connect(_save_level_settings)
+
+
+func _show_level_validation() -> void:
+	var errors: PackedStringArray = LevelValidator.validate(_level_root)
+	var dialog: AcceptDialog = AcceptDialog.new()
+	dialog.title = "关卡配置检查"
+	dialog.dialog_text = "结构检查通过（不代表已证明可解）。" if errors.is_empty() else (
+		"草稿仍可保存；发布前请解决：\n\n" + "\n".join(errors))
+	dialog.confirmed.connect(dialog.queue_free)
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered(Vector2i(620, 320))
 
 
 func _open_level_settings() -> void:
@@ -1674,8 +1565,8 @@ func _rebuild_inspector() -> void:
 		_build_wire_inspector()
 	elif _selection == null or not is_instance_valid(_selection):
 		var hint := Label.new()
-		if _playtest_mode:
-			hint.text = "试玩中：点击已有积木或电线修改。\n按住光源拖动可调整方向；\n结束试玩后保留设计改动，\n不会保存重力与机关的临时位移。"
+		if _validation_mode:
+			hint.text = "验证中：点击已有积木或电线修改。\n按住光源拖动可调整方向；\n结束验证后保留设计改动，\n不会保存重力与机关的临时位移。"
 		else:
 			hint.text = "未选中积木\n\n点击画面中的积木选中；\n点空白处取消；\n点击电线选中电线。\n\n选中触发开关/压力传感器后，\n从它右侧出现的 ○ 端口\n拖到任意积木上即可连线；\n点击电线可配置机关动作。"
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1692,7 +1583,12 @@ func _build_block_inspector() -> void:
 	title.add_theme_font_size_override("font_size", 18)
 	_inspector_content.add_child(title)
 	var manager := _level_root.get_node_or_null("LevelManager") as LevelManager
-	if manager != null and manager.level_kind == LevelManager.LevelKind.BUILD and not _playtest_mode:
+	if (
+		manager != null
+		and manager.level_kind == LevelManager.LevelKind.BUILD
+		and WireService.is_target(_selection)
+		and not _validation_mode
+	):
 		var path := str(_blocks_container().get_path_to(_selection))
 		var target_check := CheckBox.new()
 		target_check.text = "允许玩家给此预置机关接线"
@@ -1753,12 +1649,12 @@ func _build_block_inspector() -> void:
 	_spin_x = _add_spin(transform_grid, "X", _selection.position.x, 1.0, func(v: float) -> void:
 		if _selection != null:
 			_selection.position.x = v
-			_record_playtest_component(_selection, &"position", 0, v)
+			_record_validation_component(_selection, &"position", 0, v)
 			_on_selected_transform_changed())
 	_spin_y = _add_spin(transform_grid, "Y", _selection.position.y, 1.0, func(v: float) -> void:
 		if _selection != null:
 			_selection.position.y = v
-			_record_playtest_component(_selection, &"position", 1, v)
+			_record_validation_component(_selection, &"position", 1, v)
 			_on_selected_transform_changed())
 	var display_rotation := rad_to_deg(_selection.rotation)
 	if _selection is LightSource:
@@ -1770,17 +1666,17 @@ func _build_block_inspector() -> void:
 						_selection.global_rotation = deg_to_rad(v)
 					else:
 						_selection.rotation = deg_to_rad(v)
-					_record_playtest_property(_selection, &"rotation", _selection.rotation)
+					_record_validation_property(_selection, &"rotation", _selection.rotation)
 					_on_selected_transform_changed())
 	_spin_scale_x = _add_spin(transform_grid, "缩放X", _selection.scale.x, 0.1, func(v: float) -> void:
 		if _selection != null:
 			_selection.scale.x = maxf(v, SelectionGizmo.MIN_SCALE)
-			_record_playtest_component(_selection, &"scale", 0, _selection.scale.x)
+			_record_validation_component(_selection, &"scale", 0, _selection.scale.x)
 			_on_selected_transform_changed())
 	_spin_scale_y = _add_spin(transform_grid, "缩放Y", _selection.scale.y, 0.1, func(v: float) -> void:
 		if _selection != null:
 			_selection.scale.y = maxf(v, SelectionGizmo.MIN_SCALE)
-			_record_playtest_component(_selection, &"scale", 1, _selection.scale.y)
+			_record_validation_component(_selection, &"scale", 1, _selection.scale.y)
 			_on_selected_transform_changed())
 	if _selection is LightSource:
 		var source := _selection as LightSource
@@ -1799,8 +1695,8 @@ func _build_block_inspector() -> void:
 		_inspector_content.add_child(direction_buttons)
 		var source_hint := Label.new()
 		source_hint.text = (
-			"试玩中：按住光源拖动可瞄准；Shift+拖动可移动。"
-			if _playtest_mode else
+			"验证中：按住光源拖动可瞄准；Shift+拖动可移动。"
+			if _validation_mode else
 			"也可拖动顶部旋转柄，或按 Q / E 调整；光路会立即刷新。"
 		)
 		source_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1816,7 +1712,7 @@ func _build_block_inspector() -> void:
 			_add_prop_control(props_grid, prop)
 
 	var wires := _wires_for_node(_selection)
-	if not _playtest_mode and _source_signal_of(_selection) != &"":
+	if not _validation_mode and _source_signal_of(_selection) != &"":
 		_inspector_content.add_child(_section_label("电线"))
 		var hint := Label.new()
 		hint.text = "从积木右侧的 ○ 端口\n按住拖到任意积木上连线。\n点击电线可选中，Del 断开。"
@@ -1831,13 +1727,13 @@ func _build_block_inspector() -> void:
 		trigger_preview.toggled.connect(func(active: bool) -> void:
 			preview_trigger_source(preview_source, active))
 		_inspector_content.add_child(trigger_preview)
-	if not wires.is_empty() and not _playtest_mode:
+	if not wires.is_empty() and not _validation_mode:
 		if _source_signal_of(_selection) == &"":
 			_inspector_content.add_child(_section_label("电线"))
 		for pair in wires:
 			_inspector_content.add_child(_make_wire_row(pair["text"], pair["index"]))
 
-	if not _playtest_mode:
+	if not _validation_mode:
 		_inspector_content.add_child(HSeparator.new())
 		var delete_button := Button.new()
 		delete_button.text = "删除这个积木（Del）"
@@ -1892,7 +1788,7 @@ func _build_wire_inspector() -> void:
 		_add_check(grid, "断电后恢复原状", link.restore_on_off, func(on: bool) -> void:
 			set_wire_property(index, &"restore_on_off", on))
 
-	if not _playtest_mode:
+	if not _validation_mode:
 		var preview_button := Button.new()
 		preview_button.text = "预览动作位"
 		preview_button.toggle_mode = true
@@ -1907,7 +1803,7 @@ func _build_wire_inspector() -> void:
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_color_override("font_color", Color(0.75, 0.8, 0.7))
 	_inspector_content.add_child(hint)
-	if not _playtest_mode:
+	if not _validation_mode:
 		var delete_button := Button.new()
 		delete_button.text = "断开这条电线"
 		delete_button.pressed.connect(_on_wire_delete_pressed.bind(index))
@@ -1966,7 +1862,7 @@ func set_wire_property(index: int, prop_name: StringName, value: Variant, push :
 	if push:
 		_push_undo()
 	link.set(prop_name, value)
-	_record_playtest_property(link, prop_name, value)
+	_record_validation_property(link, prop_name, value)
 	if link.is_editor_preview_active():
 		link.set_editor_preview_active(true)
 	_wire_layer.queue_redraw()
@@ -1977,7 +1873,7 @@ func set_wire_property(index: int, prop_name: StringName, value: Variant, push :
 
 ## 在编辑器中直接查看电线的动作位；关闭预览即恢复目标原位。
 func preview_wire_action(index: int, active: bool) -> bool:
-	if _playtest_mode:
+	if _validation_mode:
 		return false
 	var wires := _wire_layer.get_wires()
 	if index < 0 or index >= wires.size():
@@ -2132,7 +2028,7 @@ func _wires_for_node(node: Node) -> Array[Dictionary]:
 
 
 func _on_wire_delete_pressed(index: int) -> void:
-	if _playtest_mode:
+	if _validation_mode:
 		return
 	_push_undo()
 	_wire_layer.remove_wire(index)
@@ -2210,14 +2106,14 @@ func _update_status() -> void:
 		# 电线节点（ActionLink）也是实例根，但它不是积木
 		block_count = LevelFileIO.walk_instance_roots(_level_root).size() - get_wire_count()
 	if _validation_mode:
-		_status_label.text = "实时验证中 ｜ 可拖动光源 ｜ 全光线覆盖仅作测试 ｜ Esc 结束并恢复设计"
-		return
-	if _playtest_mode:
-		_status_label.text = "试玩中 ｜ 拖光源调方向、Shift+拖动位置 ｜ 全光线覆盖仅作测试 ｜ Esc 结束并保留编辑"
+		_status_label.text = "验证中 ｜ 拖光源调方向、Shift+拖动位置 ｜ 全光线覆盖仅作测试 ｜ 空格发射 ｜ Esc 结束，仅保留手动编辑"
 		return
 	_status_label.text = "文件：%s%s ｜ 积木：%d ｜ 电线：%d ｜ 滚轮缩放 · 中/右键拖动画布 ｜ Ctrl+S 保存" % [
 		file_name, " ●" if _dirty else "", block_count, get_wire_count(),
 	]
+	var errors: PackedStringArray = LevelValidator.validate(_level_root)
+	if not errors.is_empty():
+		_status_label.text += " ｜ 配置问题 %d 项（点击检查关卡）" % errors.size()
 
 
 func _to_world(screen_pos: Vector2) -> Vector2:
@@ -2229,18 +2125,11 @@ func _ui_has_focus() -> bool:
 
 
 func _source_signal_of(node: Node) -> StringName:
-	if node.has_signal(&"active_changed"):
-		return &"active_changed"
-	if node.has_signal(&"pressed_changed"):
-		return &"pressed_changed"
-	return &""
+	return WireService.source_signal(node)
 
 
 func _is_valid_wire_target(node: Node, signal_name: StringName) -> bool:
-	# 任意积木都可以当电线目标（机关/镜面/石块/蚕茧……），电线节点本身除外
-	return node != null and node is Node2D and not node is ActionLink \
-			and node.scene_file_path != "" \
-			and LevelFileIO.is_valid_wire(signal_name, ActionLink.METHOD_NAME)
+	return WireService.is_target(node) and LevelFileIO.is_valid_wire(signal_name, ActionLink.METHOD_NAME)
 
 
 ## 目标机关是否已经有一条电线（一个目标只允许一条，避免两条电线抢同一个目标）
@@ -2305,22 +2194,6 @@ func _spawn_block_impl(
 	return block
 
 
-## 生成电线节点（ActionLink）：挂在 Blocks 下，target_node 指向目标机关。
-## 先 add_child 再设 target_node——get_path_to 需要双方同树，_ready 已跑过所以补解析。
-func _spawn_link_for(target: Node2D) -> ActionLink:
-	var packed := load(ACTION_LINK_SCENE) as PackedScene
-	if packed == null:
-		return null
-	var link := packed.instantiate() as ActionLink
-	if link == null:
-		return null
-	link.name = _unique_block_name("Wire")
-	_blocks_container().add_child(link)
-	link.target_node = link.get_path_to(target)
-	link.resolve_target()
-	return link
-
-
 func _root_name_for_file(file_name: String) -> String:
 	var digits := file_name.trim_prefix("level_").split("_")[0]
 	return "Level" + digits
@@ -2352,7 +2225,7 @@ func _on_palette_pressed(entry: Dictionary) -> void:
 ## 成对生成（传送门）：只推一次撤销，返回第一扇门。
 ## 第二扇默认旋转 180°（面对面），这样光从 A 正面进、B 正面出时方向保持一致。
 func spawn_pair(entry: Dictionary, world_position: Vector2) -> Node2D:
-	if _level_root == null or _playtest_mode:
+	if _level_root == null or _validation_mode:
 		return null
 	var scene_path := str(entry.get("path", "res://blocks/portal/portal.tscn"))
 	var entry_key := str(entry.get("key", "portal"))
@@ -2399,12 +2272,12 @@ func _on_open_file_selected(path: String) -> void:
 		_do_open(path, load(path) as PackedScene))
 
 
-func _on_play_pressed() -> void:
-	set_playtest_mode(not _playtest_mode)
+func _on_validation_pressed() -> void:
+	set_validation_mode(not _validation_mode)
 
 
 func _on_gizmo_transform_started() -> void:
-	if _playtest_mode and _selection != null:
+	if _validation_mode and _selection != null:
 		_gizmo_start_transform = {
 			"position": _selection.position,
 			"rotation": _selection.rotation,
@@ -2414,13 +2287,13 @@ func _on_gizmo_transform_started() -> void:
 
 
 func _on_gizmo_transform_committed() -> void:
-	if _playtest_mode and _selection != null:
+	if _validation_mode and _selection != null:
 		if _selection.position != _gizmo_start_transform.get("position", _selection.position):
-			_record_playtest_property(_selection, &"position", _selection.position)
+			_record_validation_property(_selection, &"position", _selection.position)
 		if _selection.rotation != _gizmo_start_transform.get("rotation", _selection.rotation):
-			_record_playtest_property(_selection, &"rotation", _selection.rotation)
+			_record_validation_property(_selection, &"rotation", _selection.rotation)
 		if _selection.scale != _gizmo_start_transform.get("scale", _selection.scale):
-			_record_playtest_property(_selection, &"scale", _selection.scale)
+			_record_validation_property(_selection, &"scale", _selection.scale)
 		_gizmo_start_transform.clear()
 	_refresh_inspector_transform()
 	_on_selected_transform_changed()

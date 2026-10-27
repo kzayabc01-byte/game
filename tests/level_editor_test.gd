@@ -63,6 +63,9 @@ func _run() -> void:
 	var build_manager := build_level.get_node("LevelManager") as LevelManager
 	_check("搭建关嵌入编辑器后不再接收游玩输入",
 		build_manager != null and not build_manager.is_processing_input())
+	_check("编辑器不再创建后销毁玩家控制器", build_manager.get_node_or_null("PlayerBuilder") == null
+		and build_manager.run_mode == LevelRunContext.Mode.AUTHORING
+		and is_instance_valid(build_manager.get_node("LevelHUD")))
 	Input.parse_input_event(escape_event)
 	await get_tree().process_frame
 	_check("搭建关编辑器按 Esc 不会退出", is_instance_valid(_editor)
@@ -221,16 +224,17 @@ func _run() -> void:
 	_check("关闭模拟触发会恢复原位",
 			not trigger.is_active() and mirror.position == Vector2(416, 300))
 
-	# 实时验证运行真实信号和 Tween；退出后必须恢复进入前快照。
+	# 验证运行真实信号和 Tween；退出后必须恢复进入前快照。
 	# 光线系统会持续重算照射状态；锁存开关保证手动注入的上升沿可观察。
 	_editor.set_selected_property(&"latch", true)
 	_editor.set_wire_property(0, &"move_speed", 10000.0)
 	_editor.set_wire_property(0, &"rotate_speed", 10000.0)
 	var validation_text := _editor.serialize()
-	var validation_toggle := _find_base_button(_editor, "实时验证")
+	var validation_toggle := _find_base_button(_editor, "验证")
 	var coverage_toggle := _find_base_button(_editor, "全光线覆盖")
 	var light_range_button := _find_base_button(_editor, "有光 0°→360°")
-	_check("工具栏提供实时验证", validation_toggle != null)
+	_check("工具栏只提供统一验证入口", validation_toggle != null
+		and _find_base_button(_editor, "试玩") == null and _find_base_button(_editor, "实时验证") == null)
 	_check("全光线覆盖只在测试模式可开启",
 			coverage_toggle != null and coverage_toggle.disabled)
 	if light_range_button != null:
@@ -246,9 +250,8 @@ func _run() -> void:
 			light_range_button != null
 			and light_range_button.text == "有光 330°→30°")
 	if validation_toggle != null:
-		validation_toggle.set_pressed_no_signal(true)
-		validation_toggle.toggled.emit(true)
-	_check("实时验证会启用关卡处理",
+		validation_toggle.pressed.emit()
+	_check("验证会启用关卡处理",
 			_editor.is_validation_mode()
 			and root.process_mode == Node.PROCESS_MODE_INHERIT)
 	(trigger as TriggerSwitch).apply_lit(true)
@@ -256,14 +259,14 @@ func _run() -> void:
 		if mirror.position.distance_to(Vector2(480, 252)) < 1.0:
 			break
 		await get_tree().physics_frame
-	_check("实时验证中触发机关会驱动目标",
+	_check("验证中触发机关会驱动目标",
 			mirror.position.distance_to(Vector2(480, 252)) < 1.0)
 	if coverage_toggle != null:
 		coverage_toggle.set_pressed_no_signal(true)
 		coverage_toggle.toggled.emit(true)
 	var light_system := root.get_node("LightSystem") as LightSystem
 	var lit_directions := light_system.get_emission_directions(Vector2.RIGHT)
-	_check("实时验证只在跨 0° 的有光区域发射光线",
+	_check("验证只在跨 0° 的有光区域发射光线",
 			coverage_toggle != null and not coverage_toggle.disabled
 			and light_system.full_coverage_enabled
 			and lit_directions.size() == 30
@@ -282,9 +285,8 @@ func _run() -> void:
 	var runtime_segments: Array = runtime_renderer.get("_segment_sets")
 	_check("有光区域光线实际参与物理光路绘制", runtime_segments.size() >= 30)
 	if validation_toggle != null:
-		validation_toggle.set_pressed_no_signal(false)
-		validation_toggle.toggled.emit(false)
-	_check("结束实时验证会回到编辑模式", not _editor.is_validation_mode())
+		validation_toggle.pressed.emit()
+	_check("结束验证会回到编辑模式", not _editor.is_validation_mode())
 	root = _editor.get_level_root()
 	_check("结束验证自动关闭全光线覆盖",
 			coverage_toggle != null and coverage_toggle.disabled
@@ -295,26 +297,26 @@ func _run() -> void:
 	link = root.get_node_or_null("Blocks/Wire") as ActionLink
 	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
 	var validation_text_after := _editor.serialize()
-	_check("结束实时验证恢复设计快照",
+	_check("结束验证恢复设计快照",
 			_normalize_root_name(validation_text_after) == _normalize_root_name(validation_text)
 			and mirror.position == Vector2(416, 300))
 
-	# 试玩留在编辑器内：运行中能改已有块和电线，结束只保留主动编辑。
-	var play_button := _find_base_button(_editor, "试玩")
-	_check("工具栏提供可编辑试玩", play_button != null)
+	# 验证留在编辑器内：运行中能改已有块和电线，结束只保留主动编辑。
+	var play_button := _find_base_button(_editor, "验证")
+	_check("工具栏提供可编辑验证", play_button != null)
 	var source_angle_before := light_source.rotation
 	var wire_duration_before := link.duration
 	if play_button != null:
 		play_button.pressed.emit()
-	_check("试玩启动后关卡运行且编辑器仍在场",
-			_editor.is_playtest_mode()
+	_check("验证启动后关卡运行且编辑器仍在场",
+			_editor.is_validation_mode()
 			and root.process_mode == Node.PROCESS_MODE_INHERIT
-			and play_button != null and play_button.text == "结束试玩")
+			and play_button != null and play_button.text == "结束验证")
 	if coverage_toggle != null:
 		coverage_toggle.set_pressed_no_signal(true)
 		coverage_toggle.toggled.emit(true)
 	light_system = root.get_node("LightSystem") as LightSystem
-	_check("试玩也可开启全光线覆盖",
+	_check("验证也可开启全光线覆盖",
 			light_system.full_coverage_enabled
 			and light_system.get_emission_directions(Vector2.RIGHT).size() == 30)
 	if coverage_toggle != null:
@@ -325,67 +327,85 @@ func _run() -> void:
 		if mirror.position.distance_to(Vector2(480, 252)) < 1.0:
 			break
 		await get_tree().physics_frame
-	_check("试玩期间电线机关仍会运行",
+	_check("验证期间电线机关仍会运行",
 			mirror.position.distance_to(Vector2(480, 252)) < 1.0)
 	_editor.call("_press_world", light_source.global_position)
-	_check("试玩中点击光源可进入拖动瞄准",
-			_editor.get("_playtest_aim_source") == light_source)
-	_editor.call("_aim_playtest_source_at", light_source.global_position + Vector2.DOWN * 100.0)
-	_check("试玩拖动瞄准会实时转动光源",
+	_check("验证中点击光源可进入拖动瞄准",
+			_editor.get("_validation_aim_source") == light_source)
+	_editor.call("_aim_validation_source_at", light_source.global_position + Vector2.DOWN * 100.0)
+	_check("验证拖动瞄准会实时转动光源",
 			light_source.get_light_direction().is_equal_approx(Vector2.DOWN)
 			and light_source.get_angle_label_text() == "90°")
 	var aiming_spin := _editor.get("_spin_rotation") as SpinBox
-	_check("试玩瞄准时检查器角度同步更新",
+	_check("验证瞄准时检查器角度同步更新",
 			aiming_spin != null and is_equal_approx(aiming_spin.value, 90.0))
 	_editor.call("_release_world", light_source.global_position)
 	_editor.select(light_source)
-	var playtest_rotation_spin := _editor.get("_spin_rotation") as SpinBox
-	if playtest_rotation_spin != null:
-		playtest_rotation_spin.value = rad_to_deg(source_angle_before) + 21.0
-	_check("试玩中检查器可立即旋转已有光源",
+	var validation_rotation_spin := _editor.get("_spin_rotation") as SpinBox
+	if validation_rotation_spin != null:
+		validation_rotation_spin.value = rad_to_deg(source_angle_before) + 21.0
+	_check("验证中检查器可立即旋转已有光源",
 			absf(light_source.rotation - source_angle_before - deg_to_rad(21.0)) < 0.01)
 	_editor.set_wire_property(0, &"duration", 0.25)
-	_check("试玩中可修改已有电线", is_equal_approx(link.duration, 0.25))
-	_check("试玩中禁止增删关卡结构",
+	_check("验证中可修改已有电线", is_equal_approx(link.duration, 0.25))
+	_check("验证中禁止增删关卡结构",
 			_editor.spawn_block(WALL_SCENE, Vector2(32, 32)) == null
 			and not _editor.connect_wire(trigger, light_source))
 	if play_button != null:
 		play_button.pressed.emit()
-	_check("结束试玩回到编辑状态", not _editor.is_playtest_mode())
+	_check("结束验证回到编辑状态", not _editor.is_validation_mode())
 	root = _editor.get_level_root()
 	mirror = root.get_node("Blocks/Mirror") as Node2D
 	link = root.get_node_or_null("Blocks/Wire") as ActionLink
 	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
-	_check("试玩只保留设计改动，不保留机关临时位移",
+	_check("验证只保留设计改动，不保留机关临时位移",
 			absf(light_source.rotation - source_angle_before - deg_to_rad(21.0)) < 0.01
 			and is_equal_approx(link.duration, 0.25)
 			and mirror.position == Vector2(416, 300))
-	_check("试玩改动可整体撤销", _editor.undo())
+	_check("验证改动可整体撤销", _editor.undo())
 	root = _editor.get_level_root()
 	mirror = root.get_node("Blocks/Mirror") as Node2D
 	link = root.get_node_or_null("Blocks/Wire") as ActionLink
 	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
-	_check("撤销试玩恢复原有设计",
+	_check("撤销验证恢复原有设计",
 			is_equal_approx(light_source.rotation, source_angle_before)
 			and is_equal_approx(link.duration, wire_duration_before)
 			and mirror.position == Vector2(416, 300))
 	var stone := _editor.spawn_block(STONE_SCENE, Vector2(900, 100)) as StoneBlock
-	_check("试玩重力测试石块已生成", stone != null)
-	_editor.set_playtest_mode(true)
+	_check("验证重力测试石块已生成", stone != null)
+	_editor.set_validation_mode(true)
 	for _frame in range(12):
 		await get_tree().physics_frame
-	_check("试玩中的石块会受重力下落", stone.position.y > 100.0)
+	_check("验证中的石块会受重力下落", stone.position.y > 100.0)
 	_editor.select(stone)
 	var stone_x_spin := _editor.get("_spin_x") as SpinBox
 	if stone_x_spin != null:
 		stone_x_spin.value = 920.0
-	_editor.set_playtest_mode(false)
+	_editor.set_validation_mode(false)
 	root = _editor.get_level_root()
 	stone = root.get_node_or_null("Blocks/StoneBlock") as StoneBlock
 	_check("只改石块 X 不会保存重力造成的 Y 偏移",
 			stone != null and stone.position == Vector2(920, 100))
 	_editor.select(stone)
 	_editor.delete_selected()
+	root = _editor.get_level_root()
+	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
+
+	var before_passive_aim: float = light_source.rotation
+	_editor.select(light_source)
+	_editor.set_validation_mode(true)
+	_editor._handle_mouse_motion(_editor.get_viewport().get_canvas_transform() * (
+		light_source.global_position + Vector2.DOWN * 100.0))
+	_editor.set_validation_mode(false)
+	root = _editor.get_level_root()
+	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
+	_check("鼠标跟随的临时瞄准不会当作手动设计保存",
+		is_equal_approx(light_source.rotation, before_passive_aim))
+	_editor.set_validation_mode(true)
+	var firing_light: LightSystem = root.get_node("LightSystem") as LightSystem
+	_check("验证可以开始发射", firing_light.request_fire())
+	_editor.set_validation_mode(false)
+	_check("发射中退出验证会释放暂停状态", not get_tree().paused)
 	root = _editor.get_level_root()
 	light_source = root.get_node_or_null("Blocks/LightSource") as LightSource
 

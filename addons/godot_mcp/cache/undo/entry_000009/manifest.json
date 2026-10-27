@@ -1,0 +1,13 @@
+{
+  "args_summary": "batch_execute",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000009/files/blocks/convex_lens/convex_lens.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/convex_lens/convex_lens.tscn"
+    }
+  ],
+  "id": "000009",
+  "timestamp": 1793089591.0,
+  "tool": "batch_execute"
+}

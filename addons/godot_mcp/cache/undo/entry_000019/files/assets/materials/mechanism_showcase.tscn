@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3 uid="uid://bpalf4ibtcpwt"]
+
+[ext_resource type="Script" uid="uid://o42p0k2mledi" path="res://assets/materials/mechanism_showcase.gd" id="1_mf48a"]
+
+[node name="MechanismShowcase" type="Node2D"]
+script = ExtResource("1_mf48a")
+
+[node name="Items" type="Node2D" parent="."]
+
+[node name="Labels" type="Node2D" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(576, 324)

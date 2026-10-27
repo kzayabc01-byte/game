@@ -1,12 +1,13 @@
-[gd_scene format=3 uid="uid://cwbbg52rw8owx"]
+[gd_scene load_steps=5 format=3 uid="uid://cwbbg52rw8owx"]
 
 [ext_resource type="Script" uid="uid://b6j22n5ig12aj" path="res://scenes/MainMenu/main_menu.gd" id="1_i21gk"]
+[ext_resource type="Texture2D" uid="uid://c63f4rp50syjv" path="res://assets/mechanisms/textures/light_background.png" id="2_0fo2e"]
 
 [sub_resource type="Theme" id="Theme_bi4nj"]
 
 [sub_resource type="Theme" id="Theme_dbthq"]
 
-[node name="MainMenu" type="Control" unique_id=1992102850]
+[node name="MainMenu" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -16,30 +17,35 @@ grow_vertical = 2
 theme = SubResource("Theme_bi4nj")
 script = ExtResource("1_i21gk")
 
-[node name="Background" type="TextureRect" parent="." unique_id=779231151]
+[node name="Background" type="TextureRect" parent="."]
+modulate = Color(0.92, 0.95, 1, 1)
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_0fo2e")
+expand_mode = 1
+stretch_mode = 6
 
-[node name="Decoration" type="Control" parent="." unique_id=1170339358]
+[node name="Decoration" type="Control" parent="."]
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="TitleGroup" type="Control" parent="." unique_id=1878159127]
+[node name="TitleGroup" type="Control" parent="."]
 anchors_preset = 0
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="Title" type="TextureRect" parent="TitleGroup" unique_id=275085876]
+[node name="Title" type="TextureRect" parent="TitleGroup"]
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0
 
-[node name="Label" type="Label" parent="TitleGroup" unique_id=24329069]
+[node name="Label" type="Label" parent="TitleGroup"]
 layout_mode = 0
 offset_right = 756.0
 offset_bottom = 255.0
@@ -47,7 +53,7 @@ text = "光线游戏"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="MenuGroup" type="Control" parent="." unique_id=631271015]
+[node name="MenuGroup" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -55,7 +61,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="StartButton" type="Button" parent="MenuGroup" unique_id=620465022]
+[node name="StartButton" type="Button" parent="MenuGroup"]
 custom_minimum_size = Vector2(320, 72)
 layout_mode = 0
 offset_left = 360.0
@@ -66,7 +72,7 @@ size_flags_vertical = 3
 theme = SubResource("Theme_dbthq")
 text = "开始游戏"
 
-[node name="SelectButton" type="Button" parent="MenuGroup" unique_id=1969990618]
+[node name="SelectButton" type="Button" parent="MenuGroup"]
 custom_minimum_size = Vector2(320, 72)
 layout_mode = 0
 offset_left = 360.0
@@ -77,7 +83,7 @@ size_flags_vertical = 3
 theme = SubResource("Theme_dbthq")
 text = "选择关卡"
 
-[node name="ExitButton" type="Button" parent="MenuGroup" unique_id=1366189597]
+[node name="ExitButton" type="Button" parent="MenuGroup"]
 custom_minimum_size = Vector2(320, 72)
 layout_mode = 0
 offset_left = 360.0
@@ -88,7 +94,7 @@ size_flags_vertical = 3
 theme = SubResource("Theme_dbthq")
 text = "退出游戏"
 
-[node name="WorkshopButton" type="Button" parent="." unique_id=1658440355]
+[node name="WorkshopButton" type="Button" parent="."]
 custom_minimum_size = Vector2(320, 72)
 layout_mode = 0
 offset_left = 739.0

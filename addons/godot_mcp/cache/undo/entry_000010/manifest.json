@@ -1,0 +1,33 @@
+{
+  "args_summary": "batch_execute",
+  "files": [
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000010/files/blocks/concave_lens/concave_lens.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/concave_lens/concave_lens.tscn"
+    },
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000010/files/blocks/mirror/mirror.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/mirror/mirror.tscn"
+    },
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000010/files/blocks/opaque_wall/opaque_wall.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/opaque_wall/opaque_wall.tscn"
+    },
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000010/files/blocks/stone_block/stone_block.tscn",
+      "kind": "snapshot",
+      "path": "res://blocks/stone_block/stone_block.tscn"
+    },
+    {
+      "backup": "res://addons/godot_mcp/cache/undo/entry_000010/files/scenes/MainMenu/MainMenu.tscn",
+      "kind": "snapshot",
+      "path": "res://scenes/MainMenu/MainMenu.tscn"
+    }
+  ],
+  "id": "000010",
+  "timestamp": 1793089611.0,
+  "tool": "batch_execute"
+}

@@ -13,6 +13,24 @@ signal pressed_changed(pressed: bool)
 const HEAVY_GROUP := "heavy_objects"
 const RESETTABLE_GROUP := "resettables"
 
+@export_category("视觉 / Visual")
+@export_color_no_alpha var inactive_color: Color = MechanismPalette.ORANGE_GLOW:
+	set(value):
+		inactive_color = value
+		queue_redraw()
+@export_color_no_alpha var active_color: Color = MechanismPalette.CYAN_GLOW:
+	set(value):
+		active_color = value
+		queue_redraw()
+@export_range(0.0, 1.0, 0.01) var color_concentration: float = 0.82:
+	set(value):
+		color_concentration = value
+		queue_redraw()
+@export_range(0.0, 2.0, 0.01) var glow_strength: float = 0.58:
+	set(value):
+		glow_strength = value
+		queue_redraw()
+
 var _pressed: bool = false
 
 
@@ -54,13 +72,20 @@ func _physics_process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	# 占位外观：压力板，压下时指示灯亮
 	var shape_node := get_node_or_null("CollisionShape2D") as CollisionShape2D
 	var size := Vector2(56, 56)
 	if shape_node != null and shape_node.shape is RectangleShape2D:
 		size = (shape_node.shape as RectangleShape2D).size
-	var half := size / 2.0
-	draw_rect(Rect2(-half, size), Color(0.16, 0.17, 0.2))
-	draw_rect(Rect2(-half, size), Color(0.5, 0.53, 0.6), false, 2.0)
-	var lamp := Color(0.95, 0.5, 0.25) if _pressed else Color(0.35, 0.38, 0.44)
-	draw_circle(Vector2.ZERO, minf(half.x, half.y) * 0.25, lamp)
+	var radius := minf(size.x, size.y) * 0.5
+	var state_color := active_color if _pressed else inactive_color
+	var accent := MechanismPalette.concentrate(
+		MechanismPalette.MUTED_SURFACE, state_color, color_concentration)
+	draw_circle(Vector2.ZERO, radius, MechanismPalette.DARK_SURFACE)
+	draw_arc(Vector2.ZERO, radius - 2.0, 0.0, TAU, 40, Color(accent, 0.38 + glow_strength * 0.25), 5.0)
+	draw_arc(Vector2.ZERO, radius - 6.0, 0.0, TAU, 40, accent, 2.0)
+	draw_circle(Vector2.ZERO, radius * 0.56, MechanismPalette.MUTED_SURFACE)
+	draw_circle(Vector2.ZERO, radius * 0.28, accent)
+	var notch_y := -radius * 0.72
+	for index in 4:
+		var notch_x := lerpf(-radius * 0.42, radius * 0.42, float(index) / 3.0)
+		draw_line(Vector2(notch_x, notch_y - 2.0), Vector2(notch_x, notch_y + 3.0), accent, 1.5)
